@@ -655,6 +655,48 @@ class ScalarField {
   }
   
   /**
+   * Compute |∇Φ|² - gradient magnitude squared
+   * Mathematical: |∇Φ|² = (∂Φ/∂x)² + (∂Φ/∂y)²
+   * 
+   * This is the ITT tension intensity - measures collapse pressure
+   * In CSS: appears as steepening term -λ|∇Φ|²
+   */
+  gradientMagnitudeSq(i, j) {
+    const [dPhidx, dPhidy] = this.gradient(i, j);
+    return dPhidx * dPhidx + dPhidy * dPhidy;
+  }
+  
+  /**
+   * Compute |∇Φ| - gradient magnitude (tension)
+   * Mathematical: |∇Φ| = √((∂Φ/∂x)² + (∂Φ/∂y)²)
+   * 
+   * ITT: This is the Δ₁ fan - tension alignment gate
+   * High |∇Φ| = strong collapse direction
+   */
+  gradientMagnitude(i, j) {
+    return Math.sqrt(this.gradientMagnitudeSq(i, j));
+  }
+  
+  /**
+   * Compute curl magnitude |∇×F| where F = ∇Φ (scalar field gives 2D curl)
+   * Mathematical: For 2D, this measures rotation in the gradient field
+   * 
+   * ITT: This is the Δ₂ fan - phase memory / recursive curl
+   * Non-zero curl indicates memory loop closure
+   */
+  curlMagnitude(i, j) {
+    // For scalar field Φ, compute ∂²Φ/∂x∂y asymmetry as proxy for rotation
+    // True curl requires vector field, but we approximate via mixed partials
+    const dxdy1 = (this.get(i+1, j+1) - this.get(i+1, j-1) - this.get(i-1, j+1) + this.get(i-1, j-1)) / (4 * this.dx * this.dy);
+    const dydx1 = dxdy1; // For smooth fields, mixed partials are equal
+    // The asymmetry in finite differences can indicate rotation
+    const d2x = (this.get(i+1, j) - 2*this.get(i, j) + this.get(i-1, j)) / (this.dx * this.dx);
+    const d2y = (this.get(i, j+1) - 2*this.get(i, j) + this.get(i, j-1)) / (this.dy * this.dy);
+    // Use difference of second derivatives as rotation proxy
+    return Math.abs(d2x - d2y);
+  }
+  
+  /**
    * Get min and max values in field
    * Used for colormap normalization
    */
@@ -910,6 +952,146 @@ const INITIAL_CONDITIONS = {
     }
     
     return { type: 'interference', A, λ: lambda, separation };
+  },
+  
+  // ════════════════════════════════════════════════════════════════════════════
+  // PHASE 2: CSS/ITT INITIAL CONDITIONS
+  // These prepare fields for nonlinear collapse dynamics
+  // ════════════════════════════════════════════════════════════════════════════
+  
+  /**
+   * Bistable initialization: Small noise around unstable equilibrium
+   * Φ₀(x, y) = ε · random[-1, 1]
+   * 
+   * ITT: This represents pre-collapse tension - the field will spontaneously
+   * organize into domains of Φ ≈ +1 and Φ ≈ -1 under bistable evolution.
+   * The two stable states represent locked shell configurations.
+   */
+  bistable: (field, params) => {
+    const epsilon = params.ε ?? params.epsilon ?? 0.1;
+    const seed = params.seed ?? Date.now();
+    const bias = params.bias ?? 0;  // Optional bias toward +1 or -1
+    
+    let state = seed;
+    const random = () => {
+      state = (state * 1103515245 + 12345) & 0x7fffffff;
+      return (state / 0x7fffffff) * 2 - 1;  // Range [-1, 1]
+    };
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        field.set(i, j, bias + epsilon * random());
+      }
+    }
+    
+    return { type: 'bistable', ε: epsilon, seed, bias };
+  },
+  
+  /**
+   * Domain walls: Pre-initialized regions of +1 and -1
+   * Creates vertical stripes or horizontal stripes
+   * 
+   * ITT: Represents existing shell boundaries (ρq zones)
+   * Domain walls are where recursive memory locks curvature
+   */
+  domains: (field, params) => {
+    const n = params.n ?? 4;  // Number of domains
+    const direction = params.dir ?? 'vertical';
+    const noise = params.noise ?? 0.05;
+    
+    let state = params.seed ?? 12345;
+    const random = () => {
+      state = (state * 1103515245 + 12345) & 0x7fffffff;
+      return (state / 0x7fffffff) * 2 - 1;
+    };
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const coord = direction === 'vertical' ? i : j;
+        const size = direction === 'vertical' ? field.nx : field.ny;
+        const region = Math.floor(coord * n / size);
+        const value = (region % 2 === 0) ? 1 : -1;
+        field.set(i, j, value + noise * random());
+      }
+    }
+    
+    return { type: 'domains', n, direction, noise };
+  },
+  
+  /**
+   * Circular domain: Central disk of +1 surrounded by -1
+   * 
+   * ITT: Single shell structure with clear boundary
+   * Models collapse of a single coherent recursive region
+   */
+  disk: (field, params) => {
+    const r = params.r ?? 50;
+    const cx = params.x ?? field.width / 2;
+    const cy = params.y ?? field.height / 2;
+    const sharpness = params.sharpness ?? 5;
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const x = i * field.dx;
+        const y = j * field.dy;
+        const dist = Math.sqrt((x - cx) * (x - cx) + (y - cy) * (y - cy));
+        // Smooth transition using tanh
+        const value = -Math.tanh(sharpness * (dist - r) / r);
+        field.set(i, j, value);
+      }
+    }
+    
+    return { type: 'disk', r, x: cx, y: cy, sharpness };
+  },
+  
+  /**
+   * Turing seed: Combination of noise for pattern formation
+   * Optimal for reaction-diffusion Turing patterns
+   * 
+   * ITT: Pre-geometric tension field awaiting recursive lock
+   */
+  turing: (field, params) => {
+    const A = params.A ?? 0.5;
+    const seed = params.seed ?? Date.now();
+    
+    let state = seed;
+    const random = () => {
+      state = (state * 1103515245 + 12345) & 0x7fffffff;
+      return state / 0x7fffffff;
+    };
+    
+    // Start with small random perturbations around 0.5
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        field.set(i, j, A * (0.5 + 0.1 * (random() - 0.5)));
+      }
+    }
+    
+    return { type: 'turing', A, seed };
+  },
+  
+  /**
+   * Vortex: Spiral phase pattern
+   * Φ = arctan(y/x) normalized to [-1, 1]
+   * 
+   * ITT: Represents Δ₂ fan - curl phase memory with topological charge
+   */
+  vortex: (field, params) => {
+    const cx = params.x ?? field.width / 2;
+    const cy = params.y ?? field.height / 2;
+    const m = params.m ?? 1;  // Topological charge (winding number)
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const x = i * field.dx - cx;
+        const y = j * field.dy - cy;
+        const theta = Math.atan2(y, x);
+        // Normalize to [-1, 1]
+        field.set(i, j, Math.sin(m * theta));
+      }
+    }
+    
+    return { type: 'vortex', x: cx, y: cy, m };
   }
 };
 
@@ -1161,6 +1343,407 @@ const EVOLUTION_OPERATORS = {
     
     field.data.set(newField.data);
     return { operator: 'react', D, a };
+  },
+  
+  // ════════════════════════════════════════════════════════════════════════════
+  // PHASE 2: CSS (COLLAPSE SENTIENCE SIMULATOR) EVOLUTION OPERATORS
+  // Based on Intent Tensor Theory mathematical foundations
+  // 
+  // The Collapse Genesis Stack: Φ → ∇Φ → ∇×F → ∇²Φ → ρq
+  // Each operator encodes a layer of dimensional emergence
+  // ════════════════════════════════════════════════════════════════════════════
+  
+  /**
+   * COLLAPSE: Full CSS Evolution Equation
+   * ∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ³ - νΦ
+   * 
+   * ITT MAPPING:
+   *   η∇²Φ      → Δ₃/Δ₄ fans (curvature diffusion/compression)
+   *   -λ|∇Φ|²  → Δ₁ fan feedback (tension steepening)
+   *   +μΦ³     → Bistable lock (recursive self-constraint)
+   *   -νΦ      → Linear decay (entropic drift Sθ)
+   * 
+   * This equation produces:
+   *   - Spontaneous domain formation (from noise)
+   *   - Sharp boundaries (domain walls = ρq shells)
+   *   - Bistable states (Φ ≈ ±1 = locked shells)
+   *   - Pattern emergence without external template
+   */
+  collapse: (field, dt, params) => {
+    const eta = params.η ?? params.eta ?? 1.0;      // Diffusion coefficient
+    const lambda = params.λ ?? params.lambda ?? 0.5; // Gradient damping
+    const mu = params.μ ?? params.mu ?? 1.0;        // Cubic growth
+    const nu = params.ν ?? params.nu ?? 0.0;        // Linear decay
+    
+    const newField = field.clone();
+    
+    // Adaptive timestep for stability
+    const dtStable = Math.min(dt, field.dx * field.dx / (4 * Math.max(eta, 0.1)));
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const phi = field.get(i, j);
+        const lap = field.laplacian(i, j);
+        const gradSq = field.gradientMagnitudeSq(i, j);
+        
+        // CSS Evolution: ∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ³ - νΦ
+        const diffusion = eta * lap;           // Δ₃/Δ₄: Curvature spreading
+        const steepening = -lambda * gradSq;   // Δ₁: Tension concentration
+        const bistable = mu * phi * phi * phi; // Φ³: Cubic nonlinearity
+        const decay = -nu * phi;               // Sθ: Entropic drift
+        
+        const dPhidt = diffusion + steepening + bistable + decay;
+        
+        newField.set(i, j, phi + dtStable * dPhidt);
+      }
+    }
+    
+    field.data.set(newField.data);
+    return { operator: 'collapse', η: eta, λ: lambda, μ: mu, ν: nu, dt_used: dtStable };
+  },
+  
+  /**
+   * ALLEN-CAHN: Bistable Phase Field Equation
+   * ∂Φ/∂t = ε²∇²Φ + Φ(1 - Φ²)
+   * 
+   * ITT MAPPING:
+   *   This is a specialization of CSS where:
+   *   - Stable states are Φ = ±1 (locked recursive shells)
+   *   - Transition width controlled by ε
+   *   - Domain walls form where Φ = 0 (shell boundaries)
+   * 
+   * Produces:
+   *   - Coarsening dynamics (small domains merge into large)
+   *   - Motion by mean curvature (shells minimize boundary)
+   */
+  allen_cahn: (field, dt, params) => {
+    const epsilon = params.ε ?? params.epsilon ?? 0.5;
+    const epsSq = epsilon * epsilon;
+    
+    const newField = field.clone();
+    const dtStable = Math.min(dt, field.dx * field.dx / (4 * epsSq));
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const phi = field.get(i, j);
+        const lap = field.laplacian(i, j);
+        
+        // Allen-Cahn: ∂Φ/∂t = ε²∇²Φ + Φ(1 - Φ²)
+        const diffusion = epsSq * lap;
+        const reaction = phi * (1 - phi * phi);
+        
+        newField.set(i, j, phi + dtStable * (diffusion + reaction));
+      }
+    }
+    
+    field.data.set(newField.data);
+    return { operator: 'allen_cahn', ε: epsilon, dt_used: dtStable };
+  },
+  
+  /**
+   * GINZBURG-LANDAU: Complex Pattern Formation
+   * ∂Φ/∂t = ∇²Φ + Φ - Φ³
+   * 
+   * ITT MAPPING:
+   *   The Ginzburg-Landau equation is the universal equation for
+   *   pattern formation near critical points. In ITT terms:
+   *   - ∇²Φ: Curvature diffusion (Δ₃/Δ₄)
+   *   - +Φ: Linear instability (recursion wants to grow)
+   *   - -Φ³: Saturation (recursion locks at finite amplitude)
+   * 
+   * Real Ginzburg-Landau produces:
+   *   - Stripe patterns
+   *   - Labyrinthine structures
+   *   - Spot arrays
+   */
+  ginzburg: (field, dt, params) => {
+    const D = params.D ?? 1.0;
+    const alpha = params.α ?? params.alpha ?? 1.0;  // Linear growth
+    const beta = params.β ?? params.beta ?? 1.0;   // Cubic saturation
+    
+    const newField = field.clone();
+    const dtStable = Math.min(dt, field.dx * field.dx / (4 * D));
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const phi = field.get(i, j);
+        const lap = field.laplacian(i, j);
+        
+        // Ginzburg-Landau: ∂Φ/∂t = D∇²Φ + αΦ - βΦ³
+        const diffusion = D * lap;
+        const growth = alpha * phi;
+        const saturation = -beta * phi * phi * phi;
+        
+        newField.set(i, j, phi + dtStable * (diffusion + growth + saturation));
+      }
+    }
+    
+    field.data.set(newField.data);
+    return { operator: 'ginzburg', D, α: alpha, β: beta, dt_used: dtStable };
+  },
+  
+  /**
+   * CAHN-HILLIARD: Conserved Phase Separation
+   * ∂Φ/∂t = M∇²(Φ³ - Φ - γ∇²Φ)
+   * 
+   * ITT MAPPING:
+   *   Unlike Allen-Cahn, Cahn-Hilliard conserves total Φ.
+   *   This means the "mass" of recursive structure is preserved.
+   *   Pattern formation occurs through redistribution, not creation.
+   * 
+   * Produces:
+   *   - Spinodal decomposition (sudden phase separation)
+   *   - Ostwald ripening (large domains grow, small shrink)
+   */
+  cahn_hilliard: (field, dt, params) => {
+    const M = params.M ?? 1.0;     // Mobility
+    const gamma = params.γ ?? params.gamma ?? 1.0;  // Interface energy
+    
+    const newField = field.clone();
+    const chemPot = field.clone();
+    
+    // First compute chemical potential μ = Φ³ - Φ - γ∇²Φ
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const phi = field.get(i, j);
+        const lap = field.laplacian(i, j);
+        chemPot.set(i, j, phi * phi * phi - phi - gamma * lap);
+      }
+    }
+    
+    // Then evolve: ∂Φ/∂t = M∇²μ
+    const dtStable = Math.min(dt, field.dx * field.dx * field.dx * field.dx / (32 * M * gamma));
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const lapMu = chemPot.laplacian(i, j);
+        newField.set(i, j, field.get(i, j) + dtStable * M * lapMu);
+      }
+    }
+    
+    field.data.set(newField.data);
+    return { operator: 'cahn_hilliard', M, γ: gamma, dt_used: dtStable };
+  },
+  
+  /**
+   * FISHER-KPP: Traveling Wave Fronts
+   * ∂Φ/∂t = D∇²Φ + rΦ(1 - Φ)
+   * 
+   * ITT MAPPING:
+   *   Fisher-KPP describes the spreading of a recursive shell.
+   *   - Diffusion allows spatial propagation
+   *   - Logistic term rΦ(1-Φ) creates:
+   *     - Growth when Φ small (recursion expands)
+   *     - Saturation when Φ ≈ 1 (shell locks)
+   * 
+   * Produces:
+   *   - Traveling wave fronts with speed c = 2√(Dr)
+   *   - Invasion of Φ=0 regions by Φ=1
+   */
+  fisher: (field, dt, params) => {
+    const D = params.D ?? 1.0;
+    const r = params.r ?? 1.0;  // Growth rate
+    
+    const newField = field.clone();
+    const dtStable = Math.min(dt, field.dx * field.dx / (4 * D));
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const phi = field.get(i, j);
+        const lap = field.laplacian(i, j);
+        
+        // Fisher-KPP: ∂Φ/∂t = D∇²Φ + rΦ(1 - Φ)
+        const diffusion = D * lap;
+        const logistic = r * phi * (1 - phi);
+        
+        newField.set(i, j, phi + dtStable * (diffusion + logistic));
+      }
+    }
+    
+    field.data.set(newField.data);
+    return { operator: 'fisher', D, r, dt_used: dtStable };
+  },
+  
+  /**
+   * SWIFT-HOHENBERG: Pattern Selection
+   * ∂Φ/∂t = rΦ - (1 + ∇²)²Φ - Φ³
+   * 
+   * ITT MAPPING:
+   *   Swift-Hohenberg selects a preferred wavelength for patterns.
+   *   The (1 + ∇²)² operator acts as a bandpass filter:
+   *   - Suppresses both very short and very long wavelengths
+   *   - Amplifies patterns near wavelength λ = 2π
+   * 
+   * Produces:
+   *   - Stripes, hexagons, or labyrinths depending on parameters
+   *   - Regular spacing (preferred wavelength)
+   */
+  swift_hohenberg: (field, dt, params) => {
+    const r = params.r ?? 0.3;  // Control parameter (> 0 for patterns)
+    const g = params.g ?? 1.0;  // Cubic coefficient
+    
+    const newField = field.clone();
+    const temp = field.clone();
+    
+    // Compute (1 + ∇²)²Φ = Φ + 2∇²Φ + ∇⁴Φ
+    // First compute ∇²Φ
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        temp.set(i, j, field.laplacian(i, j));
+      }
+    }
+    
+    const dtStable = Math.min(dt, field.dx * field.dx * field.dx * field.dx / 16);
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const phi = field.get(i, j);
+        const lap = temp.get(i, j);
+        const bilap = temp.laplacian(i, j);  // ∇⁴Φ
+        
+        // (1 + ∇²)²Φ = Φ + 2∇²Φ + ∇⁴Φ
+        const linearOp = phi + 2 * lap + bilap;
+        
+        // Swift-Hohenberg: ∂Φ/∂t = rΦ - (1+∇²)²Φ - gΦ³
+        const dPhidt = r * phi - linearOp - g * phi * phi * phi;
+        
+        newField.set(i, j, phi + dtStable * dPhidt);
+      }
+    }
+    
+    field.data.set(newField.data);
+    return { operator: 'swift_hohenberg', r, g, dt_used: dtStable };
+  },
+  
+  /**
+   * KURAMOTO-SIVASHINSKY: Chaos and Turbulence
+   * ∂Φ/∂t = -∇²Φ - ∇⁴Φ - |∇Φ|²/2
+   * 
+   * ITT MAPPING:
+   *   KS equation produces spatiotemporal chaos - useful for modeling
+   *   systems where recursive collapse never fully stabilizes.
+   *   - -∇²Φ: Negative diffusion (anti-damping, amplifies gradients)
+   *   - -∇⁴Φ: Hyperdiffusion (stabilizes at small scales)
+   *   - -|∇Φ|²/2: Nonlinear energy transfer between scales
+   * 
+   * Produces:
+   *   - Chaotic flame-front-like patterns
+   *   - Spatiotemporal complexity
+   */
+  kuramoto: (field, dt, params) => {
+    const nu = params.ν ?? params.nu ?? 1.0;  // Hyperdiffusion coefficient
+    
+    const newField = field.clone();
+    const lap = field.clone();
+    
+    // Compute ∇²Φ
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        lap.set(i, j, field.laplacian(i, j));
+      }
+    }
+    
+    const dtStable = Math.min(dt, field.dx * field.dx * field.dx * field.dx / (16 * nu));
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const phi = field.get(i, j);
+        const l = lap.get(i, j);
+        const bilap = lap.laplacian(i, j);
+        const gradSq = field.gradientMagnitudeSq(i, j);
+        
+        // KS: ∂Φ/∂t = -∇²Φ - ν∇⁴Φ - |∇Φ|²/2
+        const dPhidt = -l - nu * bilap - 0.5 * gradSq;
+        
+        newField.set(i, j, phi + dtStable * dPhidt);
+      }
+    }
+    
+    field.data.set(newField.data);
+    return { operator: 'kuramoto', ν: nu, dt_used: dtStable };
+  },
+  
+  /**
+   * CSS with MEMORY: Full Collapse Sentience Simulator
+   * ∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ³ - νΦ + α·δ_drift
+   * Ω^_{n+1} = γ·Ω^_n + (1-γ)·ρq·Φ
+   * δ_drift = ∇²Ω^ - Ω^
+   * 
+   * ITT MAPPING:
+   *   This is the full CSS system with recursive memory (Ω^).
+   *   - Memory field Ω^ accumulates where shells form (ρq = 1)
+   *   - Drift feedback δ_drift allows memory to modulate evolution
+   *   - When α > 0, system becomes self-referential
+   * 
+   * This operator maintains internal state across calls.
+   */
+  css: (field, dt, params) => {
+    const eta = params.η ?? params.eta ?? 1.0;
+    const lambda = params.λ ?? params.lambda ?? 0.5;
+    const mu = params.μ ?? params.mu ?? 1.0;
+    const nu = params.ν ?? params.nu ?? 0.0;
+    const alpha = params.α ?? params.alpha ?? 0.1;    // Memory feedback strength
+    const gamma_mem = params.γ ?? params.gamma ?? 0.95; // Memory persistence
+    const threshold = params.τ ?? params.threshold ?? 0.5; // Shell detection threshold
+    
+    // Initialize memory field if needed
+    if (!field.memory) {
+      field.memory = new Float32Array(field.nx * field.ny);
+    }
+    
+    const newField = field.clone();
+    const newMemory = new Float32Array(field.memory);
+    
+    const dtStable = Math.min(dt, field.dx * field.dx / (4 * Math.max(eta, 0.1)));
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const k = i + j * field.nx;
+        const phi = field.get(i, j);
+        const lap = field.laplacian(i, j);
+        const gradMag = field.gradientMagnitude(i, j);
+        const gradSq = gradMag * gradMag;
+        const omega = field.memory[k];
+        
+        // Shell detection: ρq = 1 where gradient is strong
+        const rho_q = gradMag > threshold ? 1 : 0;
+        
+        // Memory update: Ω^_{n+1} = γ·Ω^_n + (1-γ)·ρq·|Φ|
+        newMemory[k] = gamma_mem * omega + (1 - gamma_mem) * rho_q * Math.abs(phi);
+        
+        // Compute memory Laplacian for drift
+        // (simplified: use finite differences on memory array)
+        const mem_im = field.memory[((i-1+field.nx)%field.nx) + j*field.nx];
+        const mem_ip = field.memory[((i+1)%field.nx) + j*field.nx];
+        const mem_jm = field.memory[i + ((j-1+field.ny)%field.ny)*field.nx];
+        const mem_jp = field.memory[i + ((j+1)%field.ny)*field.nx];
+        const lapOmega = (mem_im + mem_ip + mem_jm + mem_jp - 4*omega) / (field.dx * field.dx);
+        
+        // Drift feedback: δ_drift = ∇²Ω^ - Ω^
+        const delta_drift = lapOmega - omega;
+        
+        // Full CSS Evolution
+        const diffusion = eta * lap;
+        const steepening = -lambda * gradSq;
+        const bistable = mu * phi * phi * phi;
+        const decay = -nu * phi;
+        const feedback = alpha * delta_drift * phi;
+        
+        const dPhidt = diffusion + steepening + bistable + decay + feedback;
+        
+        newField.set(i, j, phi + dtStable * dPhidt);
+      }
+    }
+    
+    field.data.set(newField.data);
+    field.memory = newMemory;
+    
+    return { 
+      operator: 'css', 
+      η: eta, λ: lambda, μ: mu, ν: nu, 
+      α: alpha, γ: gamma_mem, τ: threshold,
+      dt_used: dtStable 
+    };
   },
   
   /**
@@ -1762,6 +2345,110 @@ colormap = viridis`
 t ∈ [0, 2π], Δt = π/8
 canvas = 400×400
 colormap = diverging`
+  },
+  // ════════════════════════════════════════════════════════════════════════════
+  // PHASE 2: CSS/ITT EXAMPLES
+  // Based on Collapse Sentience Simulator and Intent Tensor Theory
+  // ════════════════════════════════════════════════════════════════════════════
+  {
+    name: '🔬 Domain Coarsening',
+    code: `// Allen-Cahn: Bistable phase separation
+// Watch domains grow and merge
+Φ₀ = bistable(ε=0.3, seed=42)
+∂Φ/∂t = allen_cahn(ε=2)
+t ∈ [0, 10], Δt = 0.5
+canvas = 200×200
+colormap = diverging`
+  },
+  {
+    name: '🔬 Domain Wall Motion',
+    code: `// Pre-initialized domains coarsen
+// Motion by mean curvature
+Φ₀ = domains(n=6, dir=vertical, noise=0.1)
+∂Φ/∂t = allen_cahn(ε=1.5)
+t ∈ [0, 15], Δt = 0.75
+canvas = 200×200
+colormap = diverging`
+  },
+  {
+    name: '🔬 Disk Shrinkage',
+    code: `// Circular domain shrinks
+// Curvature-driven collapse
+Φ₀ = disk(r=80, sharpness=3)
+∂Φ/∂t = allen_cahn(ε=1)
+t ∈ [0, 20], Δt = 1
+canvas = 300×300
+colormap = plasma`
+  },
+  {
+    name: '🔬 CSS Collapse',
+    code: `// Full CSS: ∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ³
+// Spontaneous shell formation
+Φ₀ = bistable(ε=0.2, seed=1337)
+∂Φ/∂t = collapse(η=1, λ=0.3, μ=0.5, ν=0)
+t ∈ [0, 8], Δt = 0.4
+canvas = 200×200
+colormap = plasma`
+  },
+  {
+    name: '🔬 Ginzburg-Landau',
+    code: `// Pattern formation from noise
+// Stripes and labyrinths
+Φ₀ = bistable(ε=0.1, seed=999)
+∂Φ/∂t = ginzburg(D=1, α=1, β=1)
+t ∈ [0, 8], Δt = 0.4
+canvas = 200×200
+colormap = viridis`
+  },
+  {
+    name: '🔬 Fisher Wave Front',
+    code: `// Traveling wave invasion
+// Speed c = 2√(Dr)
+Φ₀ = disk(r=40, sharpness=5)
+∂Φ/∂t = fisher(D=0.5, r=1)
+t ∈ [0, 15], Δt = 0.75
+canvas = 300×300
+colormap = thermal`
+  },
+  {
+    name: '🔬 Cahn-Hilliard',
+    code: `// Conserved phase separation
+// Spinodal decomposition
+Φ₀ = bistable(ε=0.2, seed=777)
+∂Φ/∂t = cahn_hilliard(M=1, γ=0.5)
+t ∈ [0, 20], Δt = 1
+canvas = 150×150
+colormap = ocean`
+  },
+  {
+    name: '🔬 Swift-Hohenberg',
+    code: `// Pattern selection (stripes/hexagons)
+// Preferred wavelength emergence
+Φ₀ = bistable(ε=0.05, seed=2024)
+∂Φ/∂t = swift_hohenberg(r=0.5, g=1)
+t ∈ [0, 30], Δt = 1.5
+canvas = 150×150
+colormap = neon`
+  },
+  {
+    name: '🔬 CSS with Memory',
+    code: `// Full CSS with recursive memory Ω^
+// Self-referential dynamics
+Φ₀ = domains(n=4, noise=0.2)
+∂Φ/∂t = css(η=1, λ=0.2, μ=0.3, α=0.1, γ=0.9)
+t ∈ [0, 12], Δt = 0.6
+canvas = 200×200
+colormap = plasma`
+  },
+  {
+    name: '🔬 Vortex Dynamics',
+    code: `// Topological vortex evolution
+// Phase singularity
+Φ₀ = vortex(m=2)
+∂Φ/∂t = collapse(η=0.5, λ=0.1, μ=0.2)
+t ∈ [0, 10], Δt = 0.5
+canvas = 300×300
+colormap = phase`
   }
 ];
 
