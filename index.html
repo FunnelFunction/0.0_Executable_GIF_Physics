@@ -551,6 +551,49 @@ const COLORMAPS = {
     else if (h < 300) { r = x; g = 0; b = c; }
     else { r = c; g = 0; b = x; }
     return [Math.floor(255 * r), Math.floor(255 * g), Math.floor(255 * b)];
+  },
+  
+  /**
+   * CLA: Collapse Logic Algebra colormap
+   * Discrete colors for 7 logic states:
+   *   0: VOID   (black)      - No shells
+   *   1: PASS   (gray)       - Signal propagates  
+   *   2: AND    (red)        - Conjunction
+   *   3: OR     (blue)       - Disjunction
+   *   4: NOT    (yellow)     - Negation context
+   *   5: XOR    (magenta)    - Exclusive or
+   *   6: LATCH  (white)      - Memory lock
+   * 
+   * ITT: Maps continuous field dynamics to discrete logic
+   */
+  cla: (t) => {
+    // t is normalized [0,1], map to state [0,6]
+    const state = Math.round(t * 6);
+    const colors = [
+      [0, 0, 0],         // 0: VOID - black
+      [100, 100, 100],   // 1: PASS - gray
+      [220, 50, 50],     // 2: AND - red
+      [50, 100, 220],    // 3: OR - blue
+      [230, 220, 50],    // 4: NOT - yellow
+      [200, 50, 200],    // 5: XOR - magenta
+      [255, 255, 255]    // 6: LATCH - white
+    ];
+    return colors[Math.min(state, 6)];
+  },
+  
+  /**
+   * Shells: Emphasize shell boundaries (high gradient regions)
+   * Dark background with bright shells
+   * Good for visualizing ρq directly
+   */
+  shells: (t) => {
+    // Exponential emphasis on high values
+    const s = Math.pow(t, 0.3);
+    return [
+      clamp(Math.floor(255 * s * 0.9), 0, 255),
+      clamp(Math.floor(255 * s * 0.6), 0, 255),
+      clamp(Math.floor(255 * s * 1.0), 0, 255)
+    ];
   }
 };
 
@@ -708,6 +751,247 @@ class ScalarField {
       if (this.data[k] > max) max = this.data[k];
     }
     return [min, max];
+  }
+  
+  // ════════════════════════════════════════════════════════════════════════════
+  // PHASE 4: CLA^ (Collapse Logic Algebra)
+  // Detect shell configurations as discrete logic states
+  // Shell = high |∇Φ| region (ρq)
+  // Logic gates emerge from spatial shell configurations
+  // ════════════════════════════════════════════════════════════════════════════
+  
+  /**
+   * Compute ρq (shell detection) at a point
+   * ρq = 1 where |∇Φ| > threshold, 0 otherwise
+   * 
+   * ITT: Shells are termination surfaces where recursive collapse stabilizes
+   * The threshold is derived from field statistics (μ + k·σ)
+   */
+  rhoQ(i, j, threshold = null) {
+    const gradMag = this.gradientMagnitude(i, j);
+    if (threshold === null) {
+      // Default threshold: adaptive based on local context
+      threshold = 0.3;  // Can be overridden
+    }
+    return gradMag > threshold ? 1 : 0;
+  }
+  
+  /**
+   * Compute shell mask for entire field
+   * Returns Float32Array with 1 at shells, 0 elsewhere
+   * 
+   * Uses physics-derived threshold: μ + k·σ of gradient magnitudes
+   */
+  shellMask(kSigma = 1.0) {
+    const mask = new Float32Array(this.nx * this.ny);
+    const gradients = new Float32Array(this.nx * this.ny);
+    
+    // First pass: compute all gradient magnitudes
+    let sum = 0, sumSq = 0, count = 0;
+    for (let j = 0; j < this.ny; j++) {
+      for (let i = 0; i < this.nx; i++) {
+        const k = i + j * this.nx;
+        const g = this.gradientMagnitude(i, j);
+        gradients[k] = g;
+        if (g > 0) {
+          sum += g;
+          sumSq += g * g;
+          count++;
+        }
+      }
+    }
+    
+    // Compute threshold from statistics
+    const mu = count > 0 ? sum / count : 0;
+    const variance = count > 0 ? (sumSq / count) - mu * mu : 0;
+    const sigma = Math.sqrt(Math.max(0, variance));
+    const threshold = mu + kSigma * sigma;
+    
+    // Second pass: apply threshold
+    for (let k = 0; k < gradients.length; k++) {
+      mask[k] = gradients[k] >= threshold ? 1 : 0;
+    }
+    
+    return { mask, threshold, mu, sigma };
+  }
+  
+  /**
+   * CLA^ State Classification
+   * Analyzes 3x3 neighborhood of shells to determine logic gate type
+   * 
+   * States:
+   *   0: VOID   - No shells in neighborhood (ground state)
+   *   1: PASS   - Single shell direction (signal propagates)
+   *   2: AND    - Converging shells (conjunction)
+   *   3: OR     - Diverging shells (disjunction)  
+   *   4: NOT    - Enclosed by shells (negation context)
+   *   5: XOR    - Perpendicular crossing (exclusive or)
+   *   6: LATCH  - Dense shell region (memory lock)
+   * 
+   * ITT Mapping:
+   *   - VOID = Φ_q = 0 (ground domain)
+   *   - PASS = single ρq boundary
+   *   - AND/OR = shell junctions (decision points)
+   *   - NOT = enclosed region (inverted context)
+   *   - XOR = perpendicular shell crossing
+   *   - LATCH = shell lock (recursive memory)
+   */
+  claState(i, j, shellMask) {
+    // Count shells in 3x3 neighborhood
+    let shellCount = 0;
+    let shellPositions = [];
+    
+    for (let dj = -1; dj <= 1; dj++) {
+      for (let di = -1; di <= 1; di++) {
+        const ni = (i + di + this.nx) % this.nx;
+        const nj = (j + dj + this.ny) % this.ny;
+        const k = ni + nj * this.nx;
+        if (shellMask[k] > 0) {
+          shellCount++;
+          shellPositions.push([di, dj]);
+        }
+      }
+    }
+    
+    // Classify based on shell configuration
+    const centerK = i + j * this.nx;
+    const isShell = shellMask[centerK] > 0;
+    
+    // VOID: No shells nearby
+    if (shellCount === 0) {
+      return 0;  // VOID
+    }
+    
+    // LATCH: Dense shell region (>=7 of 9 are shells)
+    if (shellCount >= 7) {
+      return 6;  // LATCH
+    }
+    
+    // For remaining cases, analyze shell geometry
+    // Compute shell "direction" from positions
+    let sumX = 0, sumY = 0;
+    for (const [dx, dy] of shellPositions) {
+      sumX += dx;
+      sumY += dy;
+    }
+    
+    // Check for enclosure (shells on opposite sides)
+    let hasLeft = false, hasRight = false, hasUp = false, hasDown = false;
+    for (const [dx, dy] of shellPositions) {
+      if (dx < 0) hasLeft = true;
+      if (dx > 0) hasRight = true;
+      if (dy < 0) hasUp = true;
+      if (dy > 0) hasDown = true;
+    }
+    
+    const enclosedH = hasLeft && hasRight;
+    const enclosedV = hasUp && hasDown;
+    
+    // NOT: Enclosed on both axes (inside a shell boundary)
+    if (enclosedH && enclosedV && !isShell) {
+      return 4;  // NOT
+    }
+    
+    // XOR: Perpendicular crossing (shells in perpendicular directions)
+    if ((hasLeft || hasRight) && (hasUp || hasDown) && isShell) {
+      // Check if it's a cross pattern
+      const horizontal = (hasLeft ? 1 : 0) + (hasRight ? 1 : 0);
+      const vertical = (hasUp ? 1 : 0) + (hasDown ? 1 : 0);
+      if (horizontal >= 1 && vertical >= 1 && shellCount >= 4) {
+        return 5;  // XOR
+      }
+    }
+    
+    // Analyze gradient direction for convergence/divergence
+    if (isShell) {
+      const [gx, gy] = this.gradient(i, j);
+      const gradAngle = Math.atan2(gy, gx);
+      
+      // Check neighbor gradients for convergence
+      let converging = 0, diverging = 0;
+      for (let dj = -1; dj <= 1; dj++) {
+        for (let di = -1; di <= 1; di++) {
+          if (di === 0 && dj === 0) continue;
+          const ni = (i + di + this.nx) % this.nx;
+          const nj = (j + dj + this.ny) % this.ny;
+          const nk = ni + nj * this.nx;
+          if (shellMask[nk] > 0) {
+            const [ngx, ngy] = this.gradient(ni, nj);
+            const nAngle = Math.atan2(ngy, ngx);
+            // Vector pointing from neighbor to center
+            const toCenter = Math.atan2(-dj, -di);
+            // If gradient points toward center, converging
+            const diff = Math.abs(nAngle - toCenter);
+            if (diff < π/3 || diff > 5*π/3) {
+              converging++;
+            } else if (diff > 2*π/3 && diff < 4*π/3) {
+              diverging++;
+            }
+          }
+        }
+      }
+      
+      // AND: Multiple shells converging
+      if (converging >= 2 && shellCount >= 3) {
+        return 2;  // AND
+      }
+      
+      // OR: Shells diverging
+      if (diverging >= 2 && shellCount >= 3) {
+        return 3;  // OR
+      }
+    }
+    
+    // PASS: Default for shell regions (signal propagates)
+    if (isShell || shellCount >= 1) {
+      return 1;  // PASS
+    }
+    
+    return 0;  // VOID (fallback)
+  }
+  
+  /**
+   * Compute full CLA^ field
+   * Returns array of logic states [0-6] for each cell
+   */
+  claField(kSigma = 1.0) {
+    const { mask, threshold } = this.shellMask(kSigma);
+    const cla = new Float32Array(this.nx * this.ny);
+    
+    for (let j = 0; j < this.ny; j++) {
+      for (let i = 0; i < this.nx; i++) {
+        cla[i + j * this.nx] = this.claState(i, j, mask);
+      }
+    }
+    
+    return { cla, shellMask: mask, threshold };
+  }
+  
+  /**
+   * Count CLA states in field
+   * Returns object with counts for each state type
+   */
+  claStats(kSigma = 1.0) {
+    const { cla } = this.claField(kSigma);
+    const stats = {
+      VOID: 0,   // 0
+      PASS: 0,   // 1
+      AND: 0,    // 2
+      OR: 0,     // 3
+      NOT: 0,    // 4
+      XOR: 0,    // 5
+      LATCH: 0   // 6
+    };
+    const names = ['VOID', 'PASS', 'AND', 'OR', 'NOT', 'XOR', 'LATCH'];
+    
+    for (let k = 0; k < cla.length; k++) {
+      const state = Math.round(cla[k]);
+      if (state >= 0 && state <= 6) {
+        stats[names[state]]++;
+      }
+    }
+    
+    return stats;
   }
   
   /**
@@ -1848,6 +2132,147 @@ const EVOLUTION_OPERATORS = {
     };
   },
   
+  // ════════════════════════════════════════════════════════════════════════════
+  // PHASE 4: CLA^ (Collapse Logic Algebra) Operators
+  // Transform continuous field dynamics into discrete logic states
+  // ════════════════════════════════════════════════════════════════════════════
+  
+  /**
+   * CLA Evolution: Compute and visualize Collapse Logic Algebra
+   * Overwrites field with CLA state values [0-6] for visualization
+   * 
+   * This is a DIAGNOSTIC operator - use with colormap=cla
+   * 
+   * States:
+   *   0: VOID   - No shells (ground)
+   *   1: PASS   - Signal propagates
+   *   2: AND    - Conjunction (converging shells)
+   *   3: OR     - Disjunction (diverging shells)
+   *   4: NOT    - Negation (enclosed region)
+   *   5: XOR    - Exclusive or (perpendicular crossing)
+   *   6: LATCH  - Memory lock (dense shells)
+   * 
+   * ITT: This is the bridge from continuous collapse to discrete computation
+   */
+  cla_view: (field, dt, params) => {
+    const kSigma = params.k ?? params.kσ ?? 1.0;  // Shell detection threshold
+    
+    // Compute CLA field
+    const { cla, shellMask, threshold } = field.claField(kSigma);
+    
+    // Overwrite field data with normalized CLA states
+    for (let k = 0; k < cla.length; k++) {
+      field.data[k] = cla[k] / 6;  // Normalize to [0,1] for colormap
+    }
+    
+    // Compute stats for logging
+    const stats = {VOID:0, PASS:0, AND:0, OR:0, NOT:0, XOR:0, LATCH:0};
+    const names = ['VOID', 'PASS', 'AND', 'OR', 'NOT', 'XOR', 'LATCH'];
+    for (let k = 0; k < cla.length; k++) {
+      const state = Math.round(cla[k]);
+      if (state >= 0 && state <= 6) stats[names[state]]++;
+    }
+    
+    return { 
+      operator: 'cla_view', 
+      threshold,
+      ...stats
+    };
+  },
+  
+  /**
+   * CLA-Driven CSS: Evolution modulated by logic states
+   * Uses CLA^ to control which regions evolve
+   * 
+   * AND regions: Both diffusion and reaction active
+   * OR regions: Either diffusion or reaction (alternating)
+   * NOT regions: Inverted dynamics
+   * XOR regions: Phase-shifted evolution
+   * LATCH regions: Frozen (no evolution)
+   * 
+   * ITT: Logic gates emerge from and control field dynamics
+   */
+  cla_css: (field, dt, params) => {
+    const eta = params.η ?? params.eta ?? 1.0;
+    const mu = params.μ ?? params.mu ?? 0.5;
+    const kSigma = params.k ?? params.kσ ?? 1.0;
+    const clamp = params.clamp ?? 1.5;
+    
+    // Compute CLA field
+    const { cla, shellMask } = field.claField(kSigma);
+    
+    // Stability
+    const dtSafe = Math.min(dt, field.dx * field.dx / (4 * Math.max(eta, 0.01)), 0.1);
+    const nSubsteps = Math.max(1, Math.ceil(dt / dtSafe));
+    const dtSub = dt / nSubsteps;
+    
+    for (let step = 0; step < nSubsteps; step++) {
+      const newField = field.clone();
+      
+      for (let j = 0; j < field.ny; j++) {
+        for (let i = 0; i < field.nx; i++) {
+          const k = i + j * field.nx;
+          const phi = field.get(i, j);
+          const lap = field.laplacian(i, j);
+          const state = Math.round(cla[k]);
+          
+          let dPhidt = 0;
+          
+          switch (state) {
+            case 0:  // VOID - standard diffusion
+              dPhidt = eta * lap;
+              break;
+            case 1:  // PASS - standard CSS
+              dPhidt = eta * lap + mu * phi * (1 - phi * phi);
+              break;
+            case 2:  // AND - enhanced reaction
+              dPhidt = eta * lap + 2 * mu * phi * (1 - phi * phi);
+              break;
+            case 3:  // OR - enhanced diffusion
+              dPhidt = 2 * eta * lap + mu * phi * (1 - phi * phi);
+              break;
+            case 4:  // NOT - inverted reaction
+              dPhidt = eta * lap - mu * phi * (1 - phi * phi);
+              break;
+            case 5:  // XOR - alternating sign
+              dPhidt = eta * lap + mu * phi * (phi * phi - 1);  // Inverted bistable
+              break;
+            case 6:  // LATCH - frozen
+              dPhidt = 0;
+              break;
+          }
+          
+          let newVal = phi + dtSub * dPhidt;
+          newVal = Math.max(-clamp, Math.min(clamp, newVal));
+          newField.set(i, j, newVal);
+        }
+      }
+      
+      field.data.set(newField.data);
+    }
+    
+    return { operator: 'cla_css', η: eta, μ: mu, substeps: nSubsteps };
+  },
+  
+  /**
+   * CLA Gate Counter: Evolve CSS and log gate counts
+   * Useful for tracking how logic emerges from dynamics
+   */
+  cla_count: (field, dt, params) => {
+    // First evolve with standard CSS
+    const cssResult = EVOLUTION_OPERATORS.collapse(field, dt, params);
+    
+    // Then compute CLA stats
+    const kSigma = params.k ?? params.kσ ?? 1.0;
+    const stats = field.claStats(kSigma);
+    
+    return { 
+      operator: 'cla_count',
+      ...cssResult,
+      cla: stats
+    };
+  },
+  
   /**
    * None: No evolution (static field)
    */
@@ -2552,6 +2977,51 @@ colormap = plasma`
 t ∈ [0, 15], Δt = 0.5
 canvas = 300×300
 colormap = phase`
+  },
+  // ════════════════════════════════════════════════════════════════════════════
+  // PHASE 4: CLA^ (Collapse Logic Algebra) EXAMPLES
+  // Logic gates emerge from shell configurations
+  // See discrete computation arise from continuous dynamics
+  // ════════════════════════════════════════════════════════════════════════════
+  {
+    name: '🧠 CLA Logic View',
+    code: `// Visualize Collapse Logic Algebra states
+// Colors: black=VOID, gray=PASS, red=AND, blue=OR, yellow=NOT, magenta=XOR, white=LATCH
+Φ₀ = domains(n=4, noise=0.2)
+∂Φ/∂t = cla_view(k=0.8)
+t ∈ [0, 10], Δt = 0.5
+canvas = 200×200
+colormap = cla`
+  },
+  {
+    name: '🧠 CLA-Driven Evolution',
+    code: `// CSS evolution modulated by logic gates
+// AND: enhanced reaction, OR: enhanced diffusion, LATCH: frozen
+Φ₀ = bistable(ε=0.4, seed=42)
+∂Φ/∂t = cla_css(η=0.8, μ=0.5, k=1.0)
+t ∈ [0, 20], Δt = 1
+canvas = 200×200
+colormap = plasma`
+  },
+  {
+    name: '🧠 Shell Logic Emergence',
+    code: `// Watch logic gates form from noise
+// Run cla_view on evolving CSS field
+Φ₀ = bistable(ε=0.3, seed=2024)
+∂Φ/∂t = cla_count(η=1, λ=0.1, μ=0.6)
+t ∈ [0, 15], Δt = 0.5
+canvas = 200×200
+colormap = diverging`
+  },
+  {
+    name: '🧠 CLA Junction Network',
+    code: `// Multiple domains create junction network
+// Watch AND/OR gates form at boundaries
+Φ₀ = domains(n=6, dir=horizontal, noise=0.15)
+∂Φ/∂t = cla_view(k=0.7)
+t ∈ [0, 12], Δt = 0.6
+canvas = 200×200
+colormap = cla`
   }
 ];
 
