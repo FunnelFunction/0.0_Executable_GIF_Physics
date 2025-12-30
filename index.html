@@ -1009,6 +1009,367 @@ class ScalarField {
 
 
 // ════════════════════════════════════════════════════════════════════════════
+// PHASE 6: SYMBOL EMITTER Σ
+// Σ = g(ρq, CLA^, Ω^)
+// Discrete tokens emerge from continuous dynamics
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Symbol Vocabulary
+ * Each symbol represents a distinct dynamical event
+ * 
+ * ITT Mapping:
+ *   ρ - Shell formation (termination surface)
+ *   λ - LATCH lock (recursive memory crystallizes)
+ *   ∧ - AND gate fires (conjunction)
+ *   ∨ - OR gate fires (disjunction)
+ *   ¬ - NOT context (negation/inversion)
+ *   ⊕ - XOR crossing (exclusive boundary)
+ *   Ω - Memory peak (Ω^ threshold crossed)
+ *   ↓ - Collapse event (field contracts)
+ *   ↑ - Expansion event (field grows)
+ *   • - Pulse (transient activation)
+ *   ∅ - Void expansion (ground state grows)
+ *   ∞ - Saturation (field hits clamp)
+ */
+const SYMBOL_VOCAB = {
+  SHELL:      { char: 'ρ', name: 'shell',      desc: 'Termination surface forms' },
+  LATCH:      { char: 'λ', name: 'latch',      desc: 'Memory lock crystallizes' },
+  AND:        { char: '∧', name: 'and',        desc: 'Conjunction gate fires' },
+  OR:         { char: '∨', name: 'or',         desc: 'Disjunction gate fires' },
+  NOT:        { char: '¬', name: 'not',        desc: 'Negation context' },
+  XOR:        { char: '⊕', name: 'xor',        desc: 'Exclusive crossing' },
+  MEMORY:     { char: 'Ω', name: 'memory',     desc: 'Memory threshold crossed' },
+  COLLAPSE:   { char: '↓', name: 'collapse',   desc: 'Field contracts' },
+  EXPAND:     { char: '↑', name: 'expand',     desc: 'Field grows' },
+  PULSE:      { char: '•', name: 'pulse',      desc: 'Transient activation' },
+  VOID:       { char: '∅', name: 'void',       desc: 'Ground state expands' },
+  SATURATE:   { char: '∞', name: 'saturate',   desc: 'Field hits bounds' }
+};
+
+/**
+ * SymbolEmitter: Σ = g(ρq, CLA^, Ω^)
+ * 
+ * Monitors field state and emits discrete symbols when events occur.
+ * Maintains history for pattern detection.
+ */
+class SymbolEmitter {
+  constructor(config = {}) {
+    // Emission thresholds
+    this.shellThreshold = config.shellThreshold ?? 0.1;     // ρq spike threshold
+    this.memoryThreshold = config.memoryThreshold ?? 0.5;   // Ω^ threshold
+    this.gateThreshold = config.gateThreshold ?? 50;        // Gate count threshold
+    this.latchFrames = config.latchFrames ?? 3;             // Frames to confirm LATCH
+    this.saturationThreshold = config.saturationThreshold ?? 0.95;  // Near clamp
+    
+    // State tracking
+    this.prevStats = null;         // Previous CLA stats
+    this.prevShellCount = 0;       // Previous shell pixel count
+    this.prevMemorySum = 0;        // Previous total memory
+    this.prevFieldMean = 0;        // Previous field mean
+    this.prevFieldRange = [0, 0];  // Previous [min, max]
+    this.latchCounter = 0;         // Frames with stable LATCH
+    this.frameCount = 0;           // Total frames processed
+    
+    // Symbol buffer
+    this.buffer = [];              // Emitted symbols
+    this.maxBuffer = config.maxBuffer ?? 1000;
+    
+    // Sequence tracking
+    this.sequence = '';            // String of symbol chars
+    this.timestamps = [];          // When each symbol was emitted
+  }
+  
+  /**
+   * Process field state and emit symbols
+   * Σ = g(ρq, CLA^, Ω^)
+   * 
+   * @param {ScalarField} field - Current field state
+   * @param {number} t - Current time
+   * @param {Object} evolveInfo - Info from evolution operator
+   * @returns {Array} Newly emitted symbols
+   */
+  process(field, t, evolveInfo = {}) {
+    const emitted = [];
+    this.frameCount++;
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // 1. Compute current state
+    // ═══════════════════════════════════════════════════════════════════════
+    
+    // CLA stats
+    const stats = field.claStats(1.0);
+    
+    // Shell count (ρq)
+    const { mask: shellMask } = field.shellMask(1.0);
+    let shellCount = 0;
+    for (let k = 0; k < shellMask.length; k++) {
+      if (shellMask[k] > 0) shellCount++;
+    }
+    
+    // Memory sum (Ω^)
+    let memorySum = 0;
+    if (field.memory) {
+      for (let k = 0; k < field.memory.length; k++) {
+        memorySum += field.memory[k];
+      }
+    }
+    
+    // Field statistics
+    const [min, max] = field.range();
+    let fieldSum = 0;
+    for (let k = 0; k < field.data.length; k++) {
+      fieldSum += field.data[k];
+    }
+    const fieldMean = fieldSum / field.data.length;
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // 2. Detect events and emit symbols
+    // ═══════════════════════════════════════════════════════════════════════
+    
+    if (this.prevStats !== null) {
+      const n = field.data.length;
+      
+      // ─────────────────────────────────────────────────────────────────────
+      // SHELL (ρ): New shells forming
+      // ─────────────────────────────────────────────────────────────────────
+      const shellDelta = (shellCount - this.prevShellCount) / n;
+      if (shellDelta > this.shellThreshold) {
+        emitted.push(this.emit('SHELL', t, { delta: shellDelta }));
+      }
+      
+      // ─────────────────────────────────────────────────────────────────────
+      // LATCH (λ): Stable memory lock
+      // ─────────────────────────────────────────────────────────────────────
+      if (stats.LATCH > this.gateThreshold) {
+        this.latchCounter++;
+        if (this.latchCounter === this.latchFrames) {
+          emitted.push(this.emit('LATCH', t, { count: stats.LATCH }));
+        }
+      } else {
+        this.latchCounter = 0;
+      }
+      
+      // ─────────────────────────────────────────────────────────────────────
+      // AND (∧): Conjunction gate surge
+      // ─────────────────────────────────────────────────────────────────────
+      const andDelta = stats.AND - this.prevStats.AND;
+      if (andDelta > this.gateThreshold) {
+        emitted.push(this.emit('AND', t, { delta: andDelta, count: stats.AND }));
+      }
+      
+      // ─────────────────────────────────────────────────────────────────────
+      // OR (∨): Disjunction gate surge
+      // ─────────────────────────────────────────────────────────────────────
+      const orDelta = stats.OR - this.prevStats.OR;
+      if (orDelta > this.gateThreshold) {
+        emitted.push(this.emit('OR', t, { delta: orDelta, count: stats.OR }));
+      }
+      
+      // ─────────────────────────────────────────────────────────────────────
+      // NOT (¬): Negation context emergence
+      // ─────────────────────────────────────────────────────────────────────
+      const notDelta = stats.NOT - this.prevStats.NOT;
+      if (notDelta > this.gateThreshold) {
+        emitted.push(this.emit('NOT', t, { delta: notDelta, count: stats.NOT }));
+      }
+      
+      // ─────────────────────────────────────────────────────────────────────
+      // XOR (⊕): Exclusive crossing emergence
+      // ─────────────────────────────────────────────────────────────────────
+      const xorDelta = stats.XOR - this.prevStats.XOR;
+      if (xorDelta > this.gateThreshold) {
+        emitted.push(this.emit('XOR', t, { delta: xorDelta, count: stats.XOR }));
+      }
+      
+      // ─────────────────────────────────────────────────────────────────────
+      // MEMORY (Ω): Memory threshold crossing
+      // ─────────────────────────────────────────────────────────────────────
+      const avgMemory = memorySum / n;
+      const prevAvgMemory = this.prevMemorySum / n;
+      if (avgMemory > this.memoryThreshold && prevAvgMemory <= this.memoryThreshold) {
+        emitted.push(this.emit('MEMORY', t, { value: avgMemory }));
+      }
+      
+      // ─────────────────────────────────────────────────────────────────────
+      // COLLAPSE (↓): Field mean decreasing significantly
+      // ─────────────────────────────────────────────────────────────────────
+      const meanDelta = fieldMean - this.prevFieldMean;
+      if (meanDelta < -0.1) {
+        emitted.push(this.emit('COLLAPSE', t, { delta: meanDelta }));
+      }
+      
+      // ─────────────────────────────────────────────────────────────────────
+      // EXPAND (↑): Field mean increasing significantly
+      // ─────────────────────────────────────────────────────────────────────
+      if (meanDelta > 0.1) {
+        emitted.push(this.emit('EXPAND', t, { delta: meanDelta }));
+      }
+      
+      // ─────────────────────────────────────────────────────────────────────
+      // VOID (∅): Ground state expanding
+      // ─────────────────────────────────────────────────────────────────────
+      const voidDelta = stats.VOID - this.prevStats.VOID;
+      if (voidDelta > this.gateThreshold * 2) {
+        emitted.push(this.emit('VOID', t, { delta: voidDelta }));
+      }
+      
+      // ─────────────────────────────────────────────────────────────────────
+      // SATURATE (∞): Field hitting bounds
+      // ─────────────────────────────────────────────────────────────────────
+      const clamp = evolveInfo.clamp ?? 1.5;
+      if (Math.abs(max) > clamp * this.saturationThreshold || 
+          Math.abs(min) > clamp * this.saturationThreshold) {
+        if (Math.abs(this.prevFieldRange[1]) <= clamp * this.saturationThreshold &&
+            Math.abs(this.prevFieldRange[0]) <= clamp * this.saturationThreshold) {
+          emitted.push(this.emit('SATURATE', t, { min, max }));
+        }
+      }
+      
+      // ─────────────────────────────────────────────────────────────────────
+      // PULSE (•): Transient activation (range spike then return)
+      // ─────────────────────────────────────────────────────────────────────
+      const rangePrev = this.prevFieldRange[1] - this.prevFieldRange[0];
+      const rangeCurr = max - min;
+      if (rangeCurr > rangePrev * 1.5 && rangePrev > 0.1) {
+        emitted.push(this.emit('PULSE', t, { range: rangeCurr }));
+      }
+    }
+    
+    // ═══════════════════════════════════════════════════════════════════════
+    // 3. Update state for next frame
+    // ═══════════════════════════════════════════════════════════════════════
+    
+    this.prevStats = stats;
+    this.prevShellCount = shellCount;
+    this.prevMemorySum = memorySum;
+    this.prevFieldMean = fieldMean;
+    this.prevFieldRange = [min, max];
+    
+    return emitted;
+  }
+  
+  /**
+   * Emit a symbol
+   */
+  emit(type, t, data = {}) {
+    const vocab = SYMBOL_VOCAB[type];
+    const symbol = {
+      type,
+      char: vocab.char,
+      name: vocab.name,
+      desc: vocab.desc,
+      time: t,
+      frame: this.frameCount,
+      data
+    };
+    
+    // Add to buffer (with overflow protection)
+    this.buffer.push(symbol);
+    if (this.buffer.length > this.maxBuffer) {
+      this.buffer.shift();
+    }
+    
+    // Update sequence string
+    this.sequence += vocab.char;
+    this.timestamps.push(t);
+    
+    return symbol;
+  }
+  
+  /**
+   * Get the symbol sequence as a string
+   */
+  getSequence() {
+    return this.sequence;
+  }
+  
+  /**
+   * Get recent symbols
+   */
+  getRecent(n = 10) {
+    return this.buffer.slice(-n);
+  }
+  
+  /**
+   * Get symbol frequency counts
+   */
+  getFrequencies() {
+    const freq = {};
+    for (const sym of this.buffer) {
+      freq[sym.type] = (freq[sym.type] || 0) + 1;
+    }
+    return freq;
+  }
+  
+  /**
+   * Detect repeating patterns in sequence
+   */
+  detectPatterns(minLen = 2, maxLen = 8) {
+    const patterns = {};
+    const seq = this.sequence;
+    
+    for (let len = minLen; len <= maxLen; len++) {
+      for (let i = 0; i <= seq.length - len; i++) {
+        const pattern = seq.slice(i, i + len);
+        patterns[pattern] = (patterns[pattern] || 0) + 1;
+      }
+    }
+    
+    // Filter to patterns that repeat
+    const repeating = {};
+    for (const [pattern, count] of Object.entries(patterns)) {
+      if (count >= 2) {
+        repeating[pattern] = count;
+      }
+    }
+    
+    return repeating;
+  }
+  
+  /**
+   * Format output for logging
+   */
+  format() {
+    const lines = [];
+    lines.push(`Σ Sequence: ${this.sequence || '(empty)'}`);
+    lines.push(`Total symbols: ${this.buffer.length}`);
+    
+    const freq = this.getFrequencies();
+    if (Object.keys(freq).length > 0) {
+      lines.push(`Frequencies: ${Object.entries(freq).map(([k,v]) => `${SYMBOL_VOCAB[k].char}:${v}`).join(' ')}`);
+    }
+    
+    const patterns = this.detectPatterns();
+    const topPatterns = Object.entries(patterns)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+    if (topPatterns.length > 0) {
+      lines.push(`Patterns: ${topPatterns.map(([p,c]) => `"${p}"×${c}`).join(' ')}`);
+    }
+    
+    return lines.join('\n');
+  }
+  
+  /**
+   * Reset emitter state
+   */
+  reset() {
+    this.prevStats = null;
+    this.prevShellCount = 0;
+    this.prevMemorySum = 0;
+    this.prevFieldMean = 0;
+    this.prevFieldRange = [0, 0];
+    this.latchCounter = 0;
+    this.frameCount = 0;
+    this.buffer = [];
+    this.sequence = '';
+    this.timestamps = [];
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
 // SECTION 4: INITIAL CONDITION GENERATORS
 // Mathematical: Functions that create Φ₀(x, y)
 // ════════════════════════════════════════════════════════════════════════════
@@ -2273,6 +2634,176 @@ const EVOLUTION_OPERATORS = {
     };
   },
   
+  // ════════════════════════════════════════════════════════════════════════════
+  // PHASE 6: Σ (Symbol Emission) Operators
+  // Σ = g(ρq, CLA^, Ω^)
+  // Discrete tokens emerge from continuous dynamics
+  // ════════════════════════════════════════════════════════════════════════════
+  
+  /**
+   * SIGMA: Full CSS evolution with symbol emission
+   * Σ = g(ρq, CLA^, Ω^)
+   * 
+   * This is the complete pipeline:
+   *   Φ evolves → Ω^ remembers → CLA^ classifies → Σ emits
+   * 
+   * The system SPEAKS - emitting discrete tokens from continuous dynamics.
+   * 
+   * Symbols emitted:
+   *   ρ - Shell formation
+   *   λ - LATCH lock  
+   *   ∧ - AND gate fires
+   *   ∨ - OR gate fires
+   *   ¬ - NOT context
+   *   ⊕ - XOR crossing
+   *   Ω - Memory threshold
+   *   ↓ - Collapse
+   *   ↑ - Expansion
+   *   • - Pulse
+   *   ∅ - Void expansion
+   *   ∞ - Saturation
+   */
+  sigma: (field, dt, params, t, initialParams) => {
+    // Initialize emitter if needed
+    if (!field.emitter) {
+      field.emitter = new SymbolEmitter({
+        shellThreshold: params.shellThresh ?? 0.05,
+        memoryThreshold: params.memThresh ?? 0.3,
+        gateThreshold: params.gateThresh ?? 30,
+        latchFrames: params.latchFrames ?? 2
+      });
+    }
+    
+    // First evolve with full CSS (includes memory and drift)
+    const cssResult = EVOLUTION_OPERATORS.css(field, dt, params);
+    
+    // Then process for symbol emission
+    const emitted = field.emitter.process(field, t, cssResult);
+    
+    // Build result with symbol info
+    const result = {
+      operator: 'sigma',
+      ...cssResult,
+      symbols: {
+        emitted: emitted.map(s => s.char).join(''),
+        sequence: field.emitter.getSequence(),
+        total: field.emitter.buffer.length
+      }
+    };
+    
+    // Add emitted symbols to result for logging
+    if (emitted.length > 0) {
+      result.Σ = emitted.map(s => `${s.char}(${s.name})`).join(' ');
+    }
+    
+    return result;
+  },
+  
+  /**
+   * SIGMA_VIEW: Visualize symbol emission locations
+   * Shows WHERE symbols are being emitted in the field
+   * 
+   * Uses colormap to show:
+   *   - Low values: quiet regions
+   *   - High values: active emission regions (shells, gates, memory)
+   */
+  sigma_view: (field, dt, params, t, initialParams) => {
+    // First run normal sigma evolution
+    const sigmaResult = EVOLUTION_OPERATORS.sigma(field, dt, params, t, initialParams);
+    
+    // Compute emission intensity field
+    // Combine: shell mask + CLA gate density + memory
+    const { mask: shellMask } = field.shellMask(1.0);
+    const { cla } = field.claField(1.0);
+    
+    // Build composite "emission potential" field
+    for (let k = 0; k < field.data.length; k++) {
+      let intensity = 0;
+      
+      // Shell contribution (ρq)
+      if (shellMask[k] > 0) intensity += 0.3;
+      
+      // CLA gate contribution
+      const state = Math.round(cla[k]);
+      if (state === 2) intensity += 0.4;      // AND
+      else if (state === 3) intensity += 0.3; // OR
+      else if (state === 4) intensity += 0.2; // NOT
+      else if (state === 5) intensity += 0.35; // XOR
+      else if (state === 6) intensity += 0.5; // LATCH
+      
+      // Memory contribution (Ω^)
+      if (field.memory && field.memory[k] > 0.3) {
+        intensity += 0.3 * field.memory[k];
+      }
+      
+      field.data[k] = Math.min(1, intensity);
+    }
+    
+    return {
+      ...sigmaResult,
+      operator: 'sigma_view'
+    };
+  },
+  
+  /**
+   * SIGMA_COLLAPSE: CSS collapse with symbol tracking
+   * Simplified version without memory feedback
+   * Good for seeing basic emission patterns
+   */
+  sigma_collapse: (field, dt, params, t, initialParams) => {
+    // Initialize emitter if needed
+    if (!field.emitter) {
+      field.emitter = new SymbolEmitter({
+        shellThreshold: params.shellThresh ?? 0.08,
+        gateThreshold: params.gateThresh ?? 40
+      });
+    }
+    
+    // Evolve with collapse (simpler than full CSS)
+    const collapseResult = EVOLUTION_OPERATORS.collapse(field, dt, params);
+    
+    // Process for symbols
+    const emitted = field.emitter.process(field, t, collapseResult);
+    
+    return {
+      operator: 'sigma_collapse',
+      ...collapseResult,
+      symbols: {
+        emitted: emitted.map(s => s.char).join(''),
+        sequence: field.emitter.getSequence(),
+        total: field.emitter.buffer.length
+      },
+      Σ: emitted.length > 0 ? emitted.map(s => s.char).join('') : undefined
+    };
+  },
+  
+  /**
+   * SIGMA_ALLEN_CAHN: Allen-Cahn with symbol emission
+   * Track symbols during domain coarsening
+   */
+  sigma_allen_cahn: (field, dt, params, t, initialParams) => {
+    if (!field.emitter) {
+      field.emitter = new SymbolEmitter({
+        shellThreshold: params.shellThresh ?? 0.1,
+        gateThreshold: params.gateThresh ?? 30
+      });
+    }
+    
+    const acResult = EVOLUTION_OPERATORS.allen_cahn(field, dt, params);
+    const emitted = field.emitter.process(field, t, acResult);
+    
+    return {
+      operator: 'sigma_allen_cahn',
+      ...acResult,
+      symbols: {
+        emitted: emitted.map(s => s.char).join(''),
+        sequence: field.emitter.getSequence(),
+        total: field.emitter.buffer.length
+      },
+      Σ: emitted.length > 0 ? emitted.map(s => s.char).join('') : undefined
+    };
+  },
+  
   /**
    * None: No evolution (static field)
    */
@@ -2778,12 +3309,22 @@ async function runSimulation(spec) {
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     gif.addFrame(imageData);
     
-    // Log
+    // Log field state
     const [min, max] = field.range();
-    log.push(`t = ${t.toFixed(4)}: Φ ∈ [${min.toFixed(3)}, ${max.toFixed(3)}]`);
+    let logLine = `t = ${t.toFixed(4)}: Φ ∈ [${min.toFixed(3)}, ${max.toFixed(3)}]`;
     
     // Evolve
     const evolveInfo = evolveFn(field, spec.time.dt, spec.evolution.params, t, spec.initial.params);
+    
+    // Log symbols if emitted (Phase 6)
+    if (evolveInfo.Σ) {
+      logLine += ` | Σ: ${evolveInfo.Σ}`;
+    }
+    if (evolveInfo.symbols && evolveInfo.symbols.emitted) {
+      logLine += ` [${evolveInfo.symbols.emitted}]`;
+    }
+    
+    log.push(logLine);
     
     t += spec.time.dt;
     frame++;
@@ -2794,6 +3335,13 @@ async function runSimulation(spec) {
   
   log.push(`---`);
   log.push(`Total frames: ${frame}`);
+  
+  // Log symbol summary if emitter exists (Phase 6)
+  if (field.emitter) {
+    log.push(`---`);
+    log.push(`═══ SYMBOL EMISSION Σ ═══`);
+    log.push(field.emitter.format());
+  }
   
   // Encode GIF
   const gifData = gif.encode();
@@ -3022,6 +3570,62 @@ colormap = diverging`
 t ∈ [0, 12], Δt = 0.6
 canvas = 200×200
 colormap = cla`
+  },
+  // ════════════════════════════════════════════════════════════════════════════
+  // PHASE 6: Σ (Symbol Emission) EXAMPLES
+  // The system SPEAKS - discrete tokens from continuous dynamics
+  // Watch the Evolution Log for symbol sequences
+  // ════════════════════════════════════════════════════════════════════════════
+  {
+    name: '💬 Sigma: Full Pipeline',
+    code: `// Complete CSS → Ω^ → CLA^ → Σ pipeline
+// Watch Evolution Log for symbol emissions
+// Symbols: ρ=shell λ=latch ∧=AND ∨=OR Ω=memory
+Φ₀ = bistable(ε=0.4, seed=42)
+∂Φ/∂t = sigma(η=0.8, λ=0.1, μ=0.6, α=0.05, γ=0.9)
+t ∈ [0, 25], Δt = 1
+canvas = 150×150
+colormap = plasma`
+  },
+  {
+    name: '💬 Sigma: Domain Speech',
+    code: `// Domains coarsen and emit symbols
+// Watch for ρ (shells) and ∧/∨ (gates)
+Φ₀ = domains(n=5, noise=0.2)
+∂Φ/∂t = sigma(η=1, λ=0.1, μ=0.5, α=0.1)
+t ∈ [0, 20], Δt = 0.8
+canvas = 200×200
+colormap = diverging`
+  },
+  {
+    name: '💬 Sigma: Collapse Emission',
+    code: `// Simpler collapse dynamics with symbols
+// Good for seeing basic emission patterns
+Φ₀ = bistable(ε=0.3, seed=1337)
+∂Φ/∂t = sigma_collapse(η=1, λ=0.1, μ=0.8)
+t ∈ [0, 15], Δt = 0.5
+canvas = 200×200
+colormap = viridis`
+  },
+  {
+    name: '💬 Sigma: Allen-Cahn Words',
+    code: `// Track symbols during phase separation
+// Watch domain walls emit boundary symbols
+Φ₀ = bistable(ε=0.5, seed=2024)
+∂Φ/∂t = sigma_allen_cahn(ε=1.2)
+t ∈ [0, 25], Δt = 1
+canvas = 150×150
+colormap = diverging`
+  },
+  {
+    name: '💬 Sigma: Emission Map',
+    code: `// Visualize WHERE symbols emit
+// Bright = active emission zones
+Φ₀ = domains(n=4, noise=0.15)
+∂Φ/∂t = sigma_view(η=0.8, μ=0.5, α=0.05)
+t ∈ [0, 20], Δt = 1
+canvas = 200×200
+colormap = thermal`
   }
 ];
 
