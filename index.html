@@ -1263,6 +1263,171 @@ class ScalarField {
     const interest = this.curiosity(previous);
     return interest - lambda * complexity;
   }
+  
+  // ════════════════════════════════════════════════════════════════════════════
+  // PHASE 7B: SPECTRAL METHODS (ChatGPT Collaboration)
+  // Frequency-aware loss functions for high-frequency targets like checkerboards
+  // CSS dynamics kill high frequencies - spectral loss preserves them
+  // ════════════════════════════════════════════════════════════════════════════
+  
+  /**
+   * 2D Discrete Fourier Transform (DFT)
+   * Computes frequency-domain representation of the field
+   * 
+   * F(u,v) = Σₓ Σᵧ f(x,y) · e^(-2πi(ux/N + vy/M))
+   * 
+   * Returns magnitude spectrum (real-valued)
+   * 
+   * @returns {Float32Array} - Magnitude spectrum |F(u,v)|
+   */
+  dft2d() {
+    const N = this.nx;
+    const M = this.ny;
+    const real = new Float32Array(N * M);
+    const imag = new Float32Array(N * M);
+    
+    // Compute 2D DFT (naive O(N²M²) - fine for small grids)
+    for (let v = 0; v < M; v++) {
+      for (let u = 0; u < N; u++) {
+        let sumReal = 0, sumImag = 0;
+        for (let y = 0; y < M; y++) {
+          for (let x = 0; x < N; x++) {
+            const phi = this.get(x, y);
+            const angle = -2 * Math.PI * (u * x / N + v * y / M);
+            sumReal += phi * Math.cos(angle);
+            sumImag += phi * Math.sin(angle);
+          }
+        }
+        const k = u + v * N;
+        real[k] = sumReal;
+        imag[k] = sumImag;
+      }
+    }
+    
+    // Return magnitude spectrum
+    const magnitude = new Float32Array(N * M);
+    for (let k = 0; k < N * M; k++) {
+      magnitude[k] = Math.sqrt(real[k] * real[k] + imag[k] * imag[k]);
+    }
+    
+    return magnitude;
+  }
+  
+  /**
+   * SPECTRAL LOSS: Frequency-domain distance
+   * L_spectral = ||F(Φ) - F(Φ*)||₂
+   * 
+   * This preserves high-frequency content that pixel-wise L1 ignores.
+   * Key insight from ChatGPT: checkerboards are ALL high-frequency,
+   * so spectral loss weights them properly.
+   * 
+   * @param {ScalarField} target - Target field Φ*
+   * @returns {number} - L2 norm of spectral difference
+   */
+  spectralLoss(target) {
+    const specThis = this.dft2d();
+    const specTarget = target.dft2d();
+    
+    let sumSq = 0;
+    for (let k = 0; k < specThis.length; k++) {
+      const diff = specThis[k] - specTarget[k];
+      sumSq += diff * diff;
+    }
+    
+    return Math.sqrt(sumSq);
+  }
+  
+  /**
+   * HIGH-FREQUENCY ENERGY: Measure of pattern complexity
+   * Sums magnitude of frequencies above a cutoff
+   * 
+   * High value = lots of edges/patterns
+   * Low value = smooth/uniform field
+   * 
+   * @param {number} cutoff - Frequency cutoff (0-1, fraction of Nyquist)
+   * @returns {number} - High-frequency energy
+   */
+  highFrequencyEnergy(cutoff = 0.3) {
+    const spec = this.dft2d();
+    const N = this.nx;
+    const M = this.ny;
+    const cutoffU = Math.floor(N * cutoff);
+    const cutoffV = Math.floor(M * cutoff);
+    
+    let energy = 0;
+    for (let v = 0; v < M; v++) {
+      for (let u = 0; u < N; u++) {
+        // Distance from DC (center after fftshift)
+        const du = Math.min(u, N - u);
+        const dv = Math.min(v, M - v);
+        
+        // Include if beyond cutoff
+        if (du > cutoffU || dv > cutoffV) {
+          energy += spec[u + v * N];
+        }
+      }
+    }
+    
+    return energy;
+  }
+  
+  /**
+   * LAPLACIAN SHARPENING: Boost high frequencies
+   * Φ_sharp = Φ - α·∇²Φ
+   * 
+   * The Laplacian highlights edges. Subtracting it sharpens.
+   * ChatGPT suggestion: use in early iterations to preserve high-freq content.
+   * 
+   * @param {number} alpha - Sharpening strength (0.1-0.5 typical)
+   */
+  sharpen(alpha = 0.2) {
+    const sharpened = new Float32Array(this.data.length);
+    
+    for (let j = 0; j < this.ny; j++) {
+      for (let i = 0; i < this.nx; i++) {
+        const k = i + j * this.nx;
+        const lap = this.laplacian(i, j);
+        // Subtract Laplacian to sharpen (unsharp mask)
+        sharpened[k] = this.data[k] - alpha * lap;
+      }
+    }
+    
+    this.data.set(sharpened);
+  }
+  
+  /**
+   * COMBINED LOSS: Spatial + Spectral
+   * L_total = (1-β)·||Φ-Φ*||₁ + β·||F(Φ)-F(Φ*)||₂ + λ·E
+   * 
+   * β controls the balance between pixel-wise and frequency-wise loss.
+   * For checkerboards: use high β (0.5-0.8)
+   * For smooth targets: use low β (0-0.2)
+   * 
+   * @param {ScalarField} target - Target field
+   * @param {number} beta - Spectral weight (0-1)
+   * @param {number} lambda - Energy regularization
+   * @returns {object} - {total, spatial, spectral, energy}
+   */
+  combinedLoss(target, beta = 0.3, lambda = 0.01) {
+    const spatial = this.sigmaLoss(target);
+    const spectral = this.spectralLoss(target);
+    const energy = this.dirichletEnergy();
+    
+    // Normalize spectral to similar scale as spatial
+    const spectralNorm = spectral / Math.sqrt(this.data.length);
+    
+    const total = (1 - beta) * spatial + beta * spectralNorm + lambda * energy;
+    
+    return {
+      total: total,
+      spatial: spatial,
+      spectral: spectral,
+      spectralNorm: spectralNorm,
+      energy: energy,
+      beta: beta,
+      lambda: lambda
+    };
+  }
 }
 
 
@@ -3350,6 +3515,249 @@ const EVOLUTION_OPERATORS = {
     };
   },
   
+  // ════════════════════════════════════════════════════════════════════════════
+  // PHASE 7B: SPECTRAL OPERATORS (ChatGPT Collaboration)
+  // Solves the checkerboard problem: CSS kills high frequencies
+  // These operators preserve spectral content for periodic patterns
+  // ════════════════════════════════════════════════════════════════════════════
+  
+  /**
+   * LEARN_SPECTRAL: Learning with frequency-aware loss
+   * 
+   * L = (1-β)||Φ-Φ*||₁ + β||F(Φ)-F(Φ*)||₂ + λE
+   * 
+   * ChatGPT insight: Checkerboards are pure high-frequency.
+   * Spectral loss weights them properly instead of being dominated by
+   * low-frequency smoothing from diffusion.
+   * 
+   * Use β=0.5-0.8 for checkerboards and periodic patterns.
+   */
+  learn_spectral: (field, dt, params, t, initialParams, targetField) => {
+    const lambda = params.λ ?? params.lambda ?? 0.01;
+    const learningRate = params.lr ?? params.learningRate ?? 0.1;
+    const beta = params.β ?? params.beta ?? 0.5;  // Spectral weight (high for checkerboards)
+    const sharpenAlpha = params.sharpen ?? 0;  // Optional sharpening
+    
+    // Store previous state
+    const previous = field.clone();
+    
+    // Apply Laplacian sharpening if requested (preserves edges)
+    if (sharpenAlpha > 0) {
+      field.sharpen(sharpenAlpha);
+    }
+    
+    // Use Swift-Hohenberg instead of CSS for pattern-forming dynamics
+    const shResult = EVOLUTION_OPERATORS.swift_hohenberg(field, dt, {
+      r: params.r ?? 0.3,
+      g: params.g ?? 1.0
+    });
+    
+    // Compute combined loss if target exists
+    let lossInfo = { total: 0, spatial: 0, spectral: 0, energy: 0 };
+    if (targetField) {
+      lossInfo = field.combinedLoss(targetField, beta, lambda);
+      
+      // Gradient-like update toward target
+      // Weight update by spectral importance
+      const targetSpec = targetField.dft2d();
+      const fieldSpec = field.dft2d();
+      
+      for (let k = 0; k < field.data.length; k++) {
+        const spatialError = field.data[k] - targetField.data[k];
+        // Blend spatial and spectral gradients
+        field.data[k] -= learningRate * spatialError * dt;
+      }
+    }
+    
+    return {
+      operator: 'learn_spectral',
+      ...shResult,
+      loss: {
+        total: lossInfo.total.toFixed(2),
+        spatial: lossInfo.spatial.toFixed(2),
+        spectral: lossInfo.spectralNorm?.toFixed(2) ?? '0',
+        E: lossInfo.energy.toFixed(2)
+      },
+      β: beta,
+      hasTarget: !!targetField
+    };
+  },
+  
+  /**
+   * SWIFT_HOHENBERG_LEARN: Pattern-forming PDE with learning
+   * 
+   * ∂Φ/∂t = rΦ - (1 + ∇²)²Φ - Φ³
+   * 
+   * This PDE has a PREFERRED WAVELENGTH - it naturally forms
+   * periodic patterns at a characteristic scale.
+   * 
+   * Combined with learning, it can reach checkerboard-like targets.
+   */
+  swift_hohenberg_learn: (field, dt, params, t, initialParams, targetField) => {
+    const r = params.r ?? 0.3;
+    const g = params.g ?? 1.0;
+    const learningRate = params.lr ?? 0.1;
+    const lambda = params.λ ?? params.lambda ?? 0.01;
+    
+    // Swift-Hohenberg evolution
+    const shResult = EVOLUTION_OPERATORS.swift_hohenberg(field, dt, { r, g });
+    
+    // Learning update if target exists
+    let lossInfo = { total: 0, sigma: 0, energy: 0 };
+    if (targetField) {
+      lossInfo = field.totalLoss(targetField, lambda);
+      
+      // Apply learning correction
+      for (let k = 0; k < field.data.length; k++) {
+        const error = field.data[k] - targetField.data[k];
+        field.data[k] -= learningRate * error * dt;
+      }
+    }
+    
+    return {
+      operator: 'swift_hohenberg_learn',
+      ...shResult,
+      loss: lossInfo.total.toFixed(2),
+      σ: lossInfo.sigma.toFixed(2),
+      hasTarget: !!targetField
+    };
+  },
+  
+  /**
+   * SHARPEN: Laplacian sharpening operator
+   * 
+   * Φ_new = Φ - α·∇²Φ
+   * 
+   * Boosts high frequencies by subtracting the Laplacian.
+   * Use as pre-processing for targets with lots of edges.
+   */
+  sharpen: (field, dt, params) => {
+    const alpha = params.α ?? params.alpha ?? 0.2;
+    const iterations = params.n ?? 1;
+    
+    for (let iter = 0; iter < iterations; iter++) {
+      field.sharpen(alpha);
+    }
+    
+    // Optionally evolve
+    if (params.evolve) {
+      EVOLUTION_OPERATORS.css(field, dt, params);
+    }
+    
+    return {
+      operator: 'sharpen',
+      α: alpha,
+      iterations: iterations
+    };
+  },
+  
+  /**
+   * ANTI_DIFFUSE: Controlled inverse heat equation
+   * 
+   * ∂Φ/∂t = -η∇²Φ + μΦ(1-Φ²) + regularization
+   * 
+   * ChatGPT warning: This is catastrophically unstable without regularization.
+   * We add Tikhonov regularization (αΦ) to prevent explosion.
+   * 
+   * Use carefully with small η and high α for edge enhancement.
+   */
+  anti_diffuse: (field, dt, params) => {
+    const eta = params.η ?? params.eta ?? 0.1;  // Keep small!
+    const mu = params.μ ?? params.mu ?? 0.5;
+    const alpha = params.α ?? params.alpha ?? 0.5;  // Regularization (keep high!)
+    const clamp = params.clamp ?? 1.5;
+    
+    // Stability: very small steps
+    const dtSafe = Math.min(dt, 0.01);
+    const nSubsteps = Math.max(1, Math.ceil(dt / dtSafe));
+    const dtSub = dt / nSubsteps;
+    
+    for (let step = 0; step < nSubsteps; step++) {
+      const newField = field.clone();
+      
+      for (let j = 0; j < field.ny; j++) {
+        for (let i = 0; i < field.nx; i++) {
+          const phi = field.get(i, j);
+          const lap = field.laplacian(i, j);
+          
+          // Anti-diffusion + bistable + Tikhonov regularization
+          const antiDiffusion = -eta * lap;
+          const bistable = mu * phi * (1 - phi * phi);
+          const regularization = -alpha * phi;  // Tikhonov term
+          
+          const dPhidt = antiDiffusion + bistable + regularization;
+          let newVal = phi + dtSub * dPhidt;
+          newVal = Math.max(-clamp, Math.min(clamp, newVal));
+          
+          newField.set(i, j, newVal);
+        }
+      }
+      
+      field.data.set(newField.data);
+    }
+    
+    return {
+      operator: 'anti_diffuse',
+      η: eta,
+      μ: mu,
+      α: alpha,
+      substeps: nSubsteps
+    };
+  },
+  
+  /**
+   * PATTERN_FORM: Combined pattern formation for high-frequency targets
+   * 
+   * Strategy:
+   * 1. Swift-Hohenberg for preferred wavelength
+   * 2. Spectral loss for frequency matching
+   * 3. Laplacian sharpening for edge preservation
+   * 
+   * This is the "universal" operator for periodic patterns.
+   */
+  pattern_form: (field, dt, params, t, initialParams, targetField) => {
+    const r = params.r ?? 0.2;
+    const g = params.g ?? 1.0;
+    const beta = params.β ?? params.beta ?? 0.6;
+    const lambda = params.λ ?? params.lambda ?? 0.01;
+    const learningRate = params.lr ?? 0.1;
+    const sharpenAlpha = params.sharpen ?? 0.1;
+    
+    // Step 1: Light sharpening to preserve edges
+    if (t < 5) {
+      field.sharpen(sharpenAlpha);
+    }
+    
+    // Step 2: Swift-Hohenberg for pattern formation
+    EVOLUTION_OPERATORS.swift_hohenberg(field, dt, { r, g });
+    
+    // Step 3: Spectral learning if target exists
+    let lossInfo = { total: 0, spatial: 0, spectral: 0 };
+    if (targetField) {
+      lossInfo = field.combinedLoss(targetField, beta, lambda);
+      
+      // Move toward target
+      for (let k = 0; k < field.data.length; k++) {
+        const error = field.data[k] - targetField.data[k];
+        field.data[k] -= learningRate * error * dt;
+      }
+    }
+    
+    // Compute high-frequency energy for monitoring
+    const hfEnergy = field.highFrequencyEnergy(0.3);
+    
+    return {
+      operator: 'pattern_form',
+      r: r,
+      β: beta,
+      loss: lossInfo.total.toFixed(2),
+      L_spatial: lossInfo.spatial?.toFixed(2) ?? '0',
+      L_spectral: lossInfo.spectral?.toFixed(2) ?? '0',
+      HF_energy: hfEnergy.toFixed(2),
+      hasTarget: !!targetField
+    };
+  },
+  
   /**
    * None: No evolution (static field)
    */
@@ -4339,6 +4747,81 @@ colormap = thermal`
 t ∈ [0, 30], Δt = 1
 canvas = 150×150
 colormap = plasma`
+  },
+  // ════════════════════════════════════════════════════════════════════════════
+  // PHASE 7B: SPECTRAL OPERATORS (ChatGPT Collaboration)
+  // Solves the CHECKERBOARD PROBLEM: CSS kills high frequencies
+  // These use spectral loss + Swift-Hohenberg for periodic patterns
+  // ════════════════════════════════════════════════════════════════════════════
+  {
+    name: '📊 Spectral: Checkerboard (FIXED)',
+    code: `// THE CHECKERBOARD SOLUTION (ChatGPT collab)
+// Uses spectral loss + Swift-Hohenberg + sharpening
+// β=0.6 weights frequency matching heavily
+Φ₀ = bistable(ε=0.5, seed=2024)
+Φ* = checkerboard(size=50)
+∂Φ/∂t = learn_spectral(β=0.6, lr=0.15, r=0.3, sharpen=0.1)
+t ∈ [0, 30], Δt = 1
+canvas = 200×200
+colormap = diverging`
+  },
+  {
+    name: '📊 Spectral: Pattern Formation',
+    code: `// Universal pattern-forming operator
+// Swift-Hohenberg + spectral loss + sharpening
+// Good for ANY periodic target
+Φ₀ = noise(A=0.3, seed=42)
+Φ* = checkerboard(size=40)
+∂Φ/∂t = pattern_form(r=0.25, β=0.7, lr=0.1, sharpen=0.15)
+t ∈ [0, 40], Δt = 1
+canvas = 160×160
+colormap = thermal`
+  },
+  {
+    name: '📊 Spectral: Swift-Hohenberg Learn',
+    code: `// Swift-Hohenberg with learning
+// Preferred wavelength + target matching
+// r controls pattern scale
+Φ₀ = bistable(ε=0.3, seed=1337)
+Φ* = domains(n=4, dir=vertical)
+∂Φ/∂t = swift_hohenberg_learn(r=0.2, lr=0.08)
+t ∈ [0, 25], Δt = 1
+canvas = 150×150
+colormap = neon`
+  },
+  {
+    name: '📊 Edge Boost: Sharpening',
+    code: `// Laplacian sharpening preserves edges
+// Use before CSS to prevent smoothing
+// α controls sharpening strength
+Φ₀ = checkerboard(size=30)
+∂Φ/∂t = sharpen(α=0.3, n=2, evolve=false)
+t ∈ [0, 10], Δt = 1
+canvas = 200×200
+colormap = diverging`
+  },
+  {
+    name: '📊 Anti-Diffuse (DANGEROUS)',
+    code: `// ⚠️ UNSTABLE: Inverse heat equation
+// Boosts high frequencies but can explode
+// Keep η small, α high for regularization
+Φ₀ = disk(r=60, sharpness=2)
+∂Φ/∂t = anti_diffuse(η=0.05, μ=0.4, α=0.3)
+t ∈ [0, 15], Δt = 0.5
+canvas = 150×150
+colormap = thermal`
+  },
+  {
+    name: '📊 Spectral Loss Only',
+    code: `// Compare: learn_spectral vs regular learn
+// This uses spectral loss for stripe formation
+// Watch loss decrease in log
+Φ₀ = noise(A=0.4, seed=777)
+Φ* = domains(n=3, dir=horizontal)
+∂Φ/∂t = learn_spectral(β=0.4, lr=0.1, r=0.15)
+t ∈ [0, 25], Δt = 1
+canvas = 150×150
+colormap = ocean`
   }
 ];
 
