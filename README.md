@@ -8,6 +8,8 @@
 
 **Built by Armstrong Knight & Abdullah Khan | [FunnelFunction](https://funnelfunction.com)**
 
+https://render-executable-gif-physics.onrender.com
+
 ---
 
 ## The Paradigm Shift
