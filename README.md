@@ -8,8 +8,6 @@
 
 **Built by Armstrong Knight & Abdullah Khan | [FunnelFunction](https://funnelfunction.com)**
 
-https://render-executable-gif-physics.onrender.com
-
 ---
 
 ## The Paradigm Shift
@@ -543,6 +541,208 @@ Numerical stability requires:
 - **Wave:** Δt < Δx / c
 
 The engine automatically enforces these constraints.
+
+---
+
+## Phase 2: CSS (Collapse Sentience Simulator) Operators
+
+Phase 2 introduces nonlinear evolution operators based on the Intent Tensor Theory mathematical foundations. These operators produce spontaneous pattern formation, domain walls, and self-organizing dynamics.
+
+### The Collapse Genesis Stack
+
+```
+Φ → ∇Φ → ∇×F → ∇²Φ → ρq
+↓     ↓      ↓       ↓      ↓
+0D   1D    2D     3D    3D+
+```
+
+Each operator in Phase 2 encodes a layer of dimensional emergence.
+
+---
+
+### CSS Initial Conditions
+
+#### Bistable Noise
+```
+Φ₀ = bistable(ε=amplitude, bias=0, seed=42)
+```
+Small random perturbations around the unstable equilibrium (Φ ≈ 0). Under bistable evolution, spontaneously organizes into domains of Φ ≈ ±1.
+
+#### Domains
+```
+Φ₀ = domains(n=4, dir=vertical, noise=0.05)
+```
+Pre-initialized stripes of +1 and -1. Watch domain walls move under coarsening dynamics.
+
+#### Disk
+```
+Φ₀ = disk(r=50, sharpness=5)
+```
+Central region of +1 surrounded by -1. Models a single coherent shell.
+
+#### Turing Seed
+```
+Φ₀ = turing(A=0.5, seed=1234)
+```
+Noise optimized for Turing pattern formation.
+
+#### Vortex
+```
+Φ₀ = vortex(m=1)
+```
+Topological phase singularity with winding number m.
+
+---
+
+### CSS Evolution Operators
+
+#### Collapse (Full CSS)
+```
+∂Φ/∂t = collapse(η=1, λ=0.5, μ=1, ν=0)
+```
+
+Mathematical form: **∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ³ - νΦ**
+
+ITT Mapping:
+| Term | Symbol | ITT Meaning |
+|------|--------|-------------|
+| η∇²Φ | Δ₃/Δ₄ | Curvature spreading |
+| -λ\|∇Φ\|² | Δ₁ | Tension concentration |
+| +μΦ³ | Lock | Cubic bistability |
+| -νΦ | Sθ | Entropic decay |
+
+#### Allen-Cahn
+```
+∂Φ/∂t = allen_cahn(ε=0.5)
+```
+
+Mathematical form: **∂Φ/∂t = ε²∇²Φ + Φ(1 - Φ²)**
+
+Bistable dynamics with stable states Φ = ±1. Domain walls form where Φ = 0 and move by mean curvature. Small domains shrink, large domains grow.
+
+#### Ginzburg-Landau
+```
+∂Φ/∂t = ginzburg(D=1, α=1, β=1)
+```
+
+Mathematical form: **∂Φ/∂t = D∇²Φ + αΦ - βΦ³**
+
+Universal equation for pattern formation near critical points. Produces stripes, labyrinths, and spot arrays.
+
+#### Cahn-Hilliard
+```
+∂Φ/∂t = cahn_hilliard(M=1, γ=1)
+```
+
+Mathematical form: **∂Φ/∂t = M∇²(Φ³ - Φ - γ∇²Φ)**
+
+Conserved phase separation. Total Φ is preserved while the field reorganizes into domains. Produces spinodal decomposition and Ostwald ripening.
+
+#### Fisher-KPP
+```
+∂Φ/∂t = fisher(D=1, r=1)
+```
+
+Mathematical form: **∂Φ/∂t = D∇²Φ + rΦ(1 - Φ)**
+
+Traveling wave fronts. Wave speed c = 2√(Dr). Models invasion of Φ=0 regions by Φ=1.
+
+#### Swift-Hohenberg
+```
+∂Φ/∂t = swift_hohenberg(r=0.3, g=1)
+```
+
+Mathematical form: **∂Φ/∂t = rΦ - (1 + ∇²)²Φ - gΦ³**
+
+Pattern selection with preferred wavelength. Produces regular stripes, hexagons, or labyrinths depending on parameters.
+
+#### Kuramoto-Sivashinsky
+```
+∂Φ/∂t = kuramoto(ν=1)
+```
+
+Mathematical form: **∂Φ/∂t = -∇²Φ - ν∇⁴Φ - |∇Φ|²/2**
+
+Spatiotemporal chaos. Produces flame-front-like patterns that never stabilize.
+
+#### CSS with Memory
+```
+∂Φ/∂t = css(η=1, λ=0.2, μ=0.3, α=0.1, γ=0.9, τ=0.5)
+```
+
+Mathematical form:
+```
+∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ³ + α·δ_drift
+Ω^_{n+1} = γ·Ω^_n + (1-γ)·ρq·|Φ|
+δ_drift = ∇²Ω^ - Ω^
+```
+
+Full CSS with recursive memory field (Ω^). The system accumulates memory where shells form (high gradient regions) and uses that memory to modulate future evolution.
+
+| Parameter | Symbol | Description |
+|-----------|--------|-------------|
+| α | Feedback | Memory influence on evolution |
+| γ | Persistence | How long memory lasts (0-1) |
+| τ | Threshold | Gradient needed for shell detection |
+
+---
+
+### CSS Examples
+
+#### 1. Spontaneous Domain Formation
+```
+Φ₀ = bistable(ε=0.3, seed=42)
+∂Φ/∂t = allen_cahn(ε=2)
+t ∈ [0, 10], Δt = 0.5
+canvas = 200×200
+colormap = diverging
+```
+
+Watch random noise spontaneously organize into domains of +1 (red) and -1 (blue).
+
+#### 2. Domain Wall Motion
+```
+Φ₀ = domains(n=6, dir=vertical)
+∂Φ/∂t = allen_cahn(ε=1.5)
+t ∈ [0, 15], Δt = 0.75
+canvas = 200×200
+colormap = diverging
+```
+
+Pre-initialized stripes coarsen as curved boundaries move to reduce total interface length.
+
+#### 3. Shrinking Disk
+```
+Φ₀ = disk(r=80)
+∂Φ/∂t = allen_cahn(ε=1)
+t ∈ [0, 20], Δt = 1
+canvas = 300×300
+colormap = plasma
+```
+
+A circular domain shrinks due to curvature-driven dynamics. Demonstrates motion by mean curvature.
+
+#### 4. Pattern Selection
+```
+Φ₀ = bistable(ε=0.05, seed=2024)
+∂Φ/∂t = swift_hohenberg(r=0.5)
+t ∈ [0, 30], Δt = 1.5
+canvas = 150×150
+colormap = neon
+```
+
+Watch a preferred wavelength emerge from noise, producing regular patterns.
+
+#### 5. Self-Referential CSS
+```
+Φ₀ = domains(n=4, noise=0.2)
+∂Φ/∂t = css(η=1, λ=0.2, μ=0.3, α=0.1, γ=0.9)
+t ∈ [0, 12], Δt = 0.6
+canvas = 200×200
+colormap = plasma
+```
+
+Full CSS with memory field. The system remembers where shells formed and uses that history to guide future evolution.
 
 ---
 
