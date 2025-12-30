@@ -1,0 +1,1847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Executable GIF Physics | Φ → ∂Φ/∂t → Frames</title>
+  <style>
+    /**
+     * ================================================================
+     * EXECUTABLE GIF PHYSICS
+     * 
+     * A visual physics simulator that generates GIF animations
+     * through dynamical evolution of mathematical fields.
+     * 
+     * The user specifies:
+     *   Φ₀     = Initial state (what EXISTS)
+     *   ∂Φ/∂t  = Evolution rule (how it CHANGES)
+     *   t      = Time domain (how long we WATCH)
+     * 
+     * The system computes:
+     *   Φ(t) for t ∈ [0, T]
+     *   Then renders each Φ(tₙ) as a GIF frame
+     * 
+     * Built on Intent Tensor Theory (ITT) foundations.
+     * ================================================================
+     */
+    
+    :root {
+      /* Field visualization colors */
+      --void: #0a0a0f;
+      --field-positive: #00ffaa;
+      --field-negative: #ff0066;
+      --field-zero: #1a1a2e;
+      --text-primary: #ffffff;
+      --text-secondary: #888888;
+      --accent: #00d4ff;
+      --warning: #ffaa00;
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+      background: var(--void);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem;
+    }
+    
+    header {
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    
+    h1 {
+      font-size: 1.8rem;
+      font-weight: 300;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+    }
+    
+    h1 span.phi {
+      color: var(--field-positive);
+    }
+    
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+    }
+    
+    .main-container {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 1400px;
+    }
+    
+    .input-panel {
+      flex: 1;
+      min-width: 400px;
+      max-width: 600px;
+    }
+    
+    .output-panel {
+      flex: 1;
+      min-width: 400px;
+      max-width: 600px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    .equation-input {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    
+    .equation-input label {
+      display: block;
+      color: var(--accent);
+      font-size: 0.8rem;
+      margin-bottom: 0.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    
+    .equation-input textarea {
+      width: 100%;
+      min-height: 120px;
+      background: rgba(0,0,0,0.5);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 4px;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 1rem;
+      padding: 1rem;
+      resize: vertical;
+      line-height: 1.6;
+    }
+    
+    .equation-input textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+    }
+    
+    .equation-input textarea::placeholder {
+      color: var(--text-secondary);
+    }
+    
+    .controls {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    
+    button {
+      flex: 1;
+      padding: 1rem 2rem;
+      border: none;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    
+    button.primary {
+      background: var(--field-positive);
+      color: var(--void);
+    }
+    
+    button.primary:hover {
+      background: #00ffcc;
+      transform: translateY(-2px);
+    }
+    
+    button.secondary {
+      background: transparent;
+      color: var(--text-primary);
+      border: 1px solid rgba(255,255,255,0.2);
+    }
+    
+    button.secondary:hover {
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+    
+    .canvas-container {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+    }
+    
+    canvas {
+      display: block;
+      border-radius: 4px;
+    }
+    
+    .state-display {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 1rem;
+      width: 100%;
+      font-size: 0.85rem;
+    }
+    
+    .state-display h3 {
+      color: var(--accent);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.5rem;
+    }
+    
+    .state-display pre {
+      color: var(--text-secondary);
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+    
+    .state-display .computed {
+      color: var(--field-positive);
+    }
+    
+    .examples-section {
+      margin-top: 2rem;
+      width: 100%;
+      max-width: 1200px;
+    }
+    
+    .examples-section h2 {
+      color: var(--accent);
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 1rem;
+      text-align: center;
+    }
+    
+    .examples-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
+      gap: 1rem;
+    }
+    
+    .example-card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 8px;
+      padding: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .example-card:hover {
+      border-color: var(--accent);
+      transform: translateY(-2px);
+    }
+    
+    .example-card h4 {
+      color: var(--field-positive);
+      font-size: 0.9rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .example-card code {
+      display: block;
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      background: rgba(0,0,0,0.3);
+      padding: 0.75rem;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      line-height: 1.4;
+    }
+    
+    .error-display {
+      background: rgba(255,0,100,0.1);
+      border: 1px solid rgba(255,0,100,0.3);
+      border-radius: 4px;
+      padding: 1rem;
+      color: var(--field-negative);
+      margin-bottom: 1rem;
+      display: none;
+    }
+    
+    .download-link {
+      display: none;
+      margin-top: 1rem;
+    }
+    
+    .download-link a {
+      color: var(--accent);
+      text-decoration: none;
+      padding: 0.5rem 1rem;
+      border: 1px solid var(--accent);
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+    
+    .download-link a:hover {
+      background: var(--accent);
+      color: var(--void);
+    }
+    
+    footer {
+      margin-top: 3rem;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 0.8rem;
+    }
+    
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1><span class="phi">Φ</span> → ∂Φ/∂t → Frames</h1>
+    <p class="subtitle">Executable GIF Physics | Self-Resolving Dynamical Systems</p>
+  </header>
+  
+  <div class="main-container">
+    <div class="input-panel">
+      <div class="equation-input">
+        <label>Physical System Definition</label>
+        <textarea id="physics-input" placeholder="Φ₀ = wave(A=30, λ=80, φ=0)
+∂Φ/∂t = advect(c=0.5)
+t ∈ [0, 2π], Δt = π/4
+canvas = 400×400
+colormap = plasma"></textarea>
+      </div>
+      
+      <div class="error-display" id="error-display"></div>
+      
+      <div class="controls">
+        <button class="primary" onclick="executePhysics()">▶ Execute Physics</button>
+        <button class="secondary" onclick="clearCanvas()">Clear</button>
+      </div>
+      
+      <div class="state-display">
+        <h3>Parsed State</h3>
+        <pre id="state-output">Awaiting input...</pre>
+      </div>
+    </div>
+    
+    <div class="output-panel">
+      <div class="canvas-container">
+        <canvas id="physics-canvas" width="400" height="400"></canvas>
+      </div>
+      <div class="download-link" id="download-container">
+        <a id="download-link" href="#" download="physics.gif">⬇ Download GIF</a>
+      </div>
+      <div class="state-display">
+        <h3>Evolution Log</h3>
+        <pre id="evolution-log">No simulation run yet.</pre>
+      </div>
+    </div>
+  </div>
+  
+  <section class="examples-section">
+    <h2>Example Systems</h2>
+    <div class="examples-grid" id="examples-grid"></div>
+  </section>
+  
+  <footer>
+    <p>
+      <a href="https://github.com/FunnelFunction/0.0_Executable_GIF_Physics">GitHub</a> ·
+      <a href="https://funnelfunction.com">FunnelFunction</a> ·
+      <a href="https://intent-tensor-theory.com">Intent Tensor Theory</a>
+    </p>
+  </footer>
+
+<script>
+/**
+ * ════════════════════════════════════════════════════════════════════════════
+ * EXECUTABLE GIF PHYSICS ENGINE
+ * 
+ * Mathematical Architecture:
+ * 
+ *   1. STATE SPACE (what can exist)
+ *      Φ: Ω → ℝ         Scalar field on domain Ω ⊂ ℝ²
+ *      F: Ω → ℝ²        Vector field on domain Ω
+ *      G: Primitives    Geometric objects (circles, lines, text)
+ * 
+ *   2. DYNAMICS (how state evolves)
+ *      ∂Φ/∂t = L[Φ]     Where L is a differential operator
+ *      
+ *      Supported operators:
+ *        advect(c):     ∂Φ/∂t = -c · ∇Φ           (wave propagation)
+ *        diffuse(D):    ∂Φ/∂t = D · ∇²Φ           (heat equation)
+ *        wave(c):       ∂²Φ/∂t² = c² · ∇²Φ        (wave equation)
+ *        rotate(ω):     θ(t) = θ₀ + ω·t           (rigid rotation)
+ *        expand(v):     r(t) = r₀ + v·t           (radial expansion)
+ *        oscillate(ω):  A(t) = A₀·sin(ω·t + φ)    (harmonic oscillation)
+ *        pulse(ω):      Φ(t) = Φ₀·(1 + a·sin(ωt)) (amplitude modulation)
+ * 
+ *   3. OBSERVATION (how we render state)
+ *      Φ(x,y) → color via colormap
+ *      Primitives → canvas draw calls
+ * 
+ *   4. TIME STEPPING
+ *      Φ(t + Δt) ≈ Φ(t) + Δt · ∂Φ/∂t   (Euler method)
+ *      Each step = one GIF frame
+ * 
+ * ════════════════════════════════════════════════════════════════════════════
+ */
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECTION 1: MATHEMATICAL CONSTANTS & UTILITIES
+// ════════════════════════════════════════════════════════════════════════════
+
+const π = Math.PI;
+const τ = 2 * Math.PI;  // Full circle
+const e = Math.E;
+
+/**
+ * Clamp value to range [min, max]
+ * Mathematical: projection onto closed interval
+ */
+function clamp(x, min, max) {
+  return Math.max(min, Math.min(max, x));
+}
+
+/**
+ * Linear interpolation
+ * Mathematical: t ∈ [0,1] → a + t(b-a) ∈ [a,b]
+ */
+function lerp(a, b, t) {
+  return a + t * (b - a);
+}
+
+/**
+ * Map value from [a,b] to [c,d]
+ * Mathematical: affine transformation
+ */
+function map(x, a, b, c, d) {
+  return c + (x - a) * (d - c) / (b - a);
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECTION 2: COLORMAPS
+// Mathematical: f: [0,1] → RGB color space
+// Each colormap is a path through color space parameterized by t ∈ [0,1]
+// ════════════════════════════════════════════════════════════════════════════
+
+const COLORMAPS = {
+  /**
+   * Plasma: Blue → Purple → Orange → Yellow
+   * Perceptually uniform, good for field visualization
+   */
+  plasma: (t) => {
+    // Attempt at perceptually uniform
+    const r = clamp(Math.floor(255 * (0.05 + 0.95 * Math.pow(t, 0.5))), 0, 255);
+    const g = clamp(Math.floor(255 * (0.02 + 0.4 * t + 0.4 * Math.pow(t, 3))), 0, 255);
+    const b = clamp(Math.floor(255 * (0.5 - 0.3 * t + 0.3 * Math.pow(t, 2))), 0, 255);
+    return [r, g, b];
+  },
+  
+  /**
+   * Viridis: Purple → Blue → Green → Yellow
+   * Standard scientific colormap
+   */
+  viridis: (t) => {
+    const r = clamp(Math.floor(255 * (0.27 + 0.73 * Math.pow(t, 1.5))), 0, 255);
+    const g = clamp(Math.floor(255 * (0.004 + 0.87 * t - 0.1 * t * t)), 0, 255);
+    const b = clamp(Math.floor(255 * (0.33 + 0.35 * t - 0.65 * t * t)), 0, 255);
+    return [r, g, b];
+  },
+  
+  /**
+   * Thermal: Black → Red → Yellow → White
+   * Good for intensity/temperature fields
+   */
+  thermal: (t) => {
+    const r = clamp(Math.floor(255 * Math.min(1, 2 * t)), 0, 255);
+    const g = clamp(Math.floor(255 * Math.max(0, 2 * t - 0.5)), 0, 255);
+    const b = clamp(Math.floor(255 * Math.max(0, 4 * t - 3)), 0, 255);
+    return [r, g, b];
+  },
+  
+  /**
+   * Ocean: Deep blue → Cyan → White
+   * Good for wave fields
+   */
+  ocean: (t) => {
+    const r = clamp(Math.floor(255 * (0.05 + 0.95 * Math.pow(t, 2))), 0, 255);
+    const g = clamp(Math.floor(255 * (0.1 + 0.6 * t + 0.3 * t * t)), 0, 255);
+    const b = clamp(Math.floor(255 * (0.3 + 0.7 * Math.pow(t, 0.5))), 0, 255);
+    return [r, g, b];
+  },
+  
+  /**
+   * Diverging: Blue → White → Red
+   * Good for fields with positive and negative values
+   */
+  diverging: (t) => {
+    // t < 0.5: blue to white, t > 0.5: white to red
+    if (t < 0.5) {
+      const s = 2 * t;
+      return [
+        clamp(Math.floor(255 * s), 0, 255),
+        clamp(Math.floor(255 * s), 0, 255),
+        clamp(Math.floor(255 * (0.5 + 0.5 * s)), 0, 255)
+      ];
+    } else {
+      const s = 2 * (t - 0.5);
+      return [
+        clamp(Math.floor(255 * (0.5 + 0.5 * s)), 0, 255),
+        clamp(Math.floor(255 * (1 - s)), 0, 255),
+        clamp(Math.floor(255 * (1 - s)), 0, 255)
+      ];
+    }
+  },
+  
+  /**
+   * Neon: Dark background with bright signal
+   * Good for emphasizing structure
+   */
+  neon: (t) => {
+    const intensity = Math.pow(t, 0.7);
+    return [
+      clamp(Math.floor(255 * (0.02 + 0.1 * intensity + 0.88 * Math.pow(intensity, 3))), 0, 255),
+      clamp(Math.floor(255 * (intensity)), 0, 255),
+      clamp(Math.floor(255 * (0.05 + 0.5 * intensity)), 0, 255)
+    ];
+  },
+  
+  /**
+   * Grayscale: Black → White
+   * Simplest colormap
+   */
+  grayscale: (t) => {
+    const v = clamp(Math.floor(255 * t), 0, 255);
+    return [v, v, v];
+  },
+  
+  /**
+   * Phase: Cyclic colormap for periodic quantities
+   * Returns to start color at t=1
+   */
+  phase: (t) => {
+    const h = t * 360;
+    // HSV to RGB conversion
+    const c = 1;
+    const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    let r, g, b;
+    if (h < 60) { r = c; g = x; b = 0; }
+    else if (h < 120) { r = x; g = c; b = 0; }
+    else if (h < 180) { r = 0; g = c; b = x; }
+    else if (h < 240) { r = 0; g = x; b = c; }
+    else if (h < 300) { r = x; g = 0; b = c; }
+    else { r = c; g = 0; b = x; }
+    return [Math.floor(255 * r), Math.floor(255 * g), Math.floor(255 * b)];
+  }
+};
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECTION 3: FIELD CLASS
+// Mathematical: Φ: Ω → ℝ where Ω = [0, W] × [0, H] ⊂ ℝ²
+// Discretized to NX × NY grid
+// ════════════════════════════════════════════════════════════════════════════
+
+class ScalarField {
+  /**
+   * Create a scalar field on a discrete grid
+   * @param {number} nx - Number of grid points in x
+   * @param {number} ny - Number of grid points in y
+   * @param {number} width - Physical width of domain
+   * @param {number} height - Physical height of domain
+   */
+  constructor(nx, ny, width = 1, height = 1) {
+    this.nx = nx;
+    this.ny = ny;
+    this.width = width;
+    this.height = height;
+    this.dx = width / nx;   // Grid spacing in x
+    this.dy = height / ny;  // Grid spacing in y
+    
+    // Φ values stored in row-major order
+    // Φ[i + j * nx] = Φ(x_i, y_j)
+    this.data = new Float32Array(nx * ny);
+    
+    // For wave equation, we need velocity field
+    this.velocity = null;
+  }
+  
+  /**
+   * Get field value at grid point (i, j)
+   * Mathematical: Φ(x_i, y_j)
+   */
+  get(i, j) {
+    // Periodic boundary conditions
+    i = ((i % this.nx) + this.nx) % this.nx;
+    j = ((j % this.ny) + this.ny) % this.ny;
+    return this.data[i + j * this.nx];
+  }
+  
+  /**
+   * Set field value at grid point (i, j)
+   */
+  set(i, j, value) {
+    i = ((i % this.nx) + this.nx) % this.nx;
+    j = ((j % this.ny) + this.ny) % this.ny;
+    this.data[i + j * this.nx] = value;
+  }
+  
+  /**
+   * Get value at continuous coordinates using bilinear interpolation
+   * Mathematical: Φ(x, y) for arbitrary (x, y) ∈ Ω
+   */
+  sample(x, y) {
+    // Convert to grid coordinates
+    const gx = x / this.dx;
+    const gy = y / this.dy;
+    
+    // Grid cell indices
+    const i0 = Math.floor(gx);
+    const j0 = Math.floor(gy);
+    
+    // Fractional part
+    const fx = gx - i0;
+    const fy = gy - j0;
+    
+    // Bilinear interpolation
+    const v00 = this.get(i0, j0);
+    const v10 = this.get(i0 + 1, j0);
+    const v01 = this.get(i0, j0 + 1);
+    const v11 = this.get(i0 + 1, j0 + 1);
+    
+    return (1 - fx) * (1 - fy) * v00 +
+           fx * (1 - fy) * v10 +
+           (1 - fx) * fy * v01 +
+           fx * fy * v11;
+  }
+  
+  /**
+   * Compute gradient ∇Φ at grid point using central differences
+   * Mathematical: ∇Φ = (∂Φ/∂x, ∂Φ/∂y)
+   */
+  gradient(i, j) {
+    const dPhidx = (this.get(i + 1, j) - this.get(i - 1, j)) / (2 * this.dx);
+    const dPhidy = (this.get(i, j + 1) - this.get(i, j - 1)) / (2 * this.dy);
+    return [dPhidx, dPhidy];
+  }
+  
+  /**
+   * Compute Laplacian ∇²Φ at grid point using central differences
+   * Mathematical: ∇²Φ = ∂²Φ/∂x² + ∂²Φ/∂y²
+   */
+  laplacian(i, j) {
+    const d2Phidx2 = (this.get(i + 1, j) - 2 * this.get(i, j) + this.get(i - 1, j)) / (this.dx * this.dx);
+    const d2Phidy2 = (this.get(i, j + 1) - 2 * this.get(i, j) + this.get(i, j - 1)) / (this.dy * this.dy);
+    return d2Phidx2 + d2Phidy2;
+  }
+  
+  /**
+   * Get min and max values in field
+   * Used for colormap normalization
+   */
+  range() {
+    let min = Infinity;
+    let max = -Infinity;
+    for (let k = 0; k < this.data.length; k++) {
+      if (this.data[k] < min) min = this.data[k];
+      if (this.data[k] > max) max = this.data[k];
+    }
+    return [min, max];
+  }
+  
+  /**
+   * Create a deep copy of this field
+   */
+  clone() {
+    const copy = new ScalarField(this.nx, this.ny, this.width, this.height);
+    copy.data.set(this.data);
+    if (this.velocity) {
+      copy.velocity = new Float32Array(this.velocity);
+    }
+    return copy;
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECTION 4: INITIAL CONDITION GENERATORS
+// Mathematical: Functions that create Φ₀(x, y)
+// ════════════════════════════════════════════════════════════════════════════
+
+const INITIAL_CONDITIONS = {
+  /**
+   * Plane wave: Φ₀(x, y) = A · sin(k·x + φ)
+   * Parameters: A (amplitude), k (wave number), φ (phase)
+   * 
+   * Mathematical: k = 2π/λ where λ is wavelength
+   * The wave propagates in the x-direction
+   */
+  wave: (field, params) => {
+    const A = params.A ?? 1;
+    const lambda = params.λ ?? params.lambda ?? 50;  // wavelength in pixels
+    const k = τ / lambda;  // wave number
+    const phi = params.φ ?? params.phi ?? 0;  // initial phase
+    const angle = (params.θ ?? params.theta ?? 0) * π / 180;  // propagation angle
+    
+    const kx = k * Math.cos(angle);
+    const ky = k * Math.sin(angle);
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const x = i * field.dx;
+        const y = j * field.dy;
+        field.set(i, j, A * Math.sin(kx * x + ky * y + phi));
+      }
+    }
+    
+    return { type: 'wave', A, λ: lambda, k, φ: phi, θ: angle * 180 / π };
+  },
+  
+  /**
+   * Gaussian: Φ₀(x, y) = A · exp(-((x-x₀)² + (y-y₀)²) / (2σ²))
+   * Parameters: A (amplitude), x₀, y₀ (center), σ (width)
+   * 
+   * Mathematical: Radially symmetric, decays exponentially
+   */
+  gaussian: (field, params) => {
+    const A = params.A ?? 1;
+    const x0 = params.x ?? field.width / 2;
+    const y0 = params.y ?? field.height / 2;
+    const sigma = params.σ ?? params.sigma ?? 30;
+    
+    const twoSigmaSq = 2 * sigma * sigma;
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const x = i * field.dx;
+        const y = j * field.dy;
+        const rSq = (x - x0) * (x - x0) + (y - y0) * (y - y0);
+        field.set(i, j, A * Math.exp(-rSq / twoSigmaSq));
+      }
+    }
+    
+    return { type: 'gaussian', A, x: x0, y: y0, σ: sigma };
+  },
+  
+  /**
+   * Ring: Φ₀(x, y) = A · exp(-((r - r₀)²) / (2σ²))
+   * where r = √((x-x₀)² + (y-y₀)²)
+   * 
+   * Mathematical: Annular Gaussian, centered at (x₀, y₀)
+   */
+  ring: (field, params) => {
+    const A = params.A ?? 1;
+    const x0 = params.x ?? field.width / 2;
+    const y0 = params.y ?? field.height / 2;
+    const r0 = params.r ?? 50;  // ring radius
+    const sigma = params.σ ?? params.sigma ?? 10;  // ring width
+    
+    const twoSigmaSq = 2 * sigma * sigma;
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const x = i * field.dx;
+        const y = j * field.dy;
+        const r = Math.sqrt((x - x0) * (x - x0) + (y - y0) * (y - y0));
+        const dr = r - r0;
+        field.set(i, j, A * Math.exp(-dr * dr / twoSigmaSq));
+      }
+    }
+    
+    return { type: 'ring', A, x: x0, y: y0, r: r0, σ: sigma };
+  },
+  
+  /**
+   * Radial wave: Φ₀(x, y) = A · sin(k·r + φ)
+   * where r = √((x-x₀)² + (y-y₀)²)
+   * 
+   * Mathematical: Concentric rings emanating from center
+   */
+  radial: (field, params) => {
+    const A = params.A ?? 1;
+    const x0 = params.x ?? field.width / 2;
+    const y0 = params.y ?? field.height / 2;
+    const lambda = params.λ ?? params.lambda ?? 50;
+    const k = τ / lambda;
+    const phi = params.φ ?? params.phi ?? 0;
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const x = i * field.dx;
+        const y = j * field.dy;
+        const r = Math.sqrt((x - x0) * (x - x0) + (y - y0) * (y - y0));
+        field.set(i, j, A * Math.sin(k * r + phi));
+      }
+    }
+    
+    return { type: 'radial', A, x: x0, y: y0, λ: lambda, φ: phi };
+  },
+  
+  /**
+   * Spiral: Φ₀(x, y) = A · sin(k·r + m·θ + φ)
+   * where r, θ are polar coordinates
+   * 
+   * Mathematical: m is the number of spiral arms
+   */
+  spiral: (field, params) => {
+    const A = params.A ?? 1;
+    const x0 = params.x ?? field.width / 2;
+    const y0 = params.y ?? field.height / 2;
+    const lambda = params.λ ?? params.lambda ?? 50;
+    const k = τ / lambda;
+    const m = params.m ?? 2;  // number of arms
+    const phi = params.φ ?? params.phi ?? 0;
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const x = i * field.dx - x0;
+        const y = j * field.dy - y0;
+        const r = Math.sqrt(x * x + y * y);
+        const theta = Math.atan2(y, x);
+        field.set(i, j, A * Math.sin(k * r + m * theta + phi));
+      }
+    }
+    
+    return { type: 'spiral', A, x: x0, y: y0, λ: lambda, m, φ: phi };
+  },
+  
+  /**
+   * Checkerboard: Φ₀(x, y) = A · sign(sin(kx·x) · sin(ky·y))
+   * 
+   * Mathematical: Product of two square waves
+   */
+  checkerboard: (field, params) => {
+    const A = params.A ?? 1;
+    const size = params.size ?? 40;  // checker size in pixels
+    const k = π / size;
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const x = i * field.dx;
+        const y = j * field.dy;
+        const value = Math.sin(k * x) * Math.sin(k * y);
+        field.set(i, j, A * Math.sign(value));
+      }
+    }
+    
+    return { type: 'checkerboard', A, size };
+  },
+  
+  /**
+   * Noise: Random field
+   * Mathematical: Φ₀(x, y) ~ Uniform(0, A)
+   */
+  noise: (field, params) => {
+    const A = params.A ?? 1;
+    const seed = params.seed ?? Date.now();
+    
+    // Simple PRNG for reproducibility
+    let state = seed;
+    const random = () => {
+      state = (state * 1103515245 + 12345) & 0x7fffffff;
+      return state / 0x7fffffff;
+    };
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        field.set(i, j, A * random());
+      }
+    }
+    
+    return { type: 'noise', A, seed };
+  },
+  
+  /**
+   * Constant: Φ₀(x, y) = c
+   * Mathematical: Uniform field
+   */
+  constant: (field, params) => {
+    const c = params.c ?? params.value ?? 0.5;
+    
+    for (let k = 0; k < field.data.length; k++) {
+      field.data[k] = c;
+    }
+    
+    return { type: 'constant', c };
+  },
+  
+  /**
+   * Two-source interference: Superposition of two radial waves
+   * Φ₀ = A₁·sin(k·r₁) + A₂·sin(k·r₂)
+   */
+  interference: (field, params) => {
+    const A = params.A ?? 0.5;
+    const lambda = params.λ ?? params.lambda ?? 30;
+    const k = τ / lambda;
+    const separation = params.sep ?? params.separation ?? 100;
+    const cx = field.width / 2;
+    const cy = field.height / 2;
+    
+    const x1 = cx - separation / 2;
+    const x2 = cx + separation / 2;
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const x = i * field.dx;
+        const y = j * field.dy;
+        const r1 = Math.sqrt((x - x1) * (x - x1) + (y - cy) * (y - cy));
+        const r2 = Math.sqrt((x - x2) * (x - x2) + (y - cy) * (y - cy));
+        field.set(i, j, A * (Math.sin(k * r1) + Math.sin(k * r2)));
+      }
+    }
+    
+    return { type: 'interference', A, λ: lambda, separation };
+  }
+};
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECTION 5: EVOLUTION OPERATORS
+// Mathematical: ∂Φ/∂t = L[Φ] where L is a differential operator
+// Implemented via time stepping: Φ(t+Δt) ≈ Φ(t) + Δt · L[Φ(t)]
+// ════════════════════════════════════════════════════════════════════════════
+
+const EVOLUTION_OPERATORS = {
+  /**
+   * Advection: ∂Φ/∂t = -c · ∇Φ
+   * 
+   * Mathematical: Transport of field along direction c
+   * Solution: Φ(x, t) = Φ₀(x - c·t)
+   * 
+   * This makes waves propagate in direction of c
+   */
+  advect: (field, dt, params) => {
+    const cx = params.cx ?? params.c ?? 1;  // x-velocity
+    const cy = params.cy ?? 0;               // y-velocity
+    
+    // Semi-Lagrangian advection (unconditionally stable)
+    const newField = field.clone();
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        // Trace back to where particle came from
+        const x = i * field.dx - cx * dt;
+        const y = j * field.dy - cy * dt;
+        
+        // Sample field at departure point
+        newField.set(i, j, field.sample(
+          ((x % field.width) + field.width) % field.width,
+          ((y % field.height) + field.height) % field.height
+        ));
+      }
+    }
+    
+    field.data.set(newField.data);
+    return { operator: 'advect', cx, cy };
+  },
+  
+  /**
+   * Diffusion: ∂Φ/∂t = D · ∇²Φ
+   * 
+   * Mathematical: Heat equation - field spreads out over time
+   * Smooths features, approaches uniform distribution
+   */
+  diffuse: (field, dt, params) => {
+    const D = params.D ?? 0.1;  // Diffusion coefficient
+    
+    const newField = field.clone();
+    
+    // Stability constraint: dt < dx²/(4D)
+    const dtStable = Math.min(dt, field.dx * field.dx / (4 * D));
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const lap = field.laplacian(i, j);
+        newField.set(i, j, field.get(i, j) + dtStable * D * lap);
+      }
+    }
+    
+    field.data.set(newField.data);
+    return { operator: 'diffuse', D, dt_used: dtStable };
+  },
+  
+  /**
+   * Wave equation: ∂²Φ/∂t² = c² · ∇²Φ
+   * 
+   * Mathematical: Second-order in time, requires velocity field
+   * Preserves wave structure (no damping)
+   */
+  wave: (field, dt, params) => {
+    const c = params.c ?? 1;  // Wave speed
+    const cSq = c * c;
+    
+    // Initialize velocity field if needed
+    if (!field.velocity) {
+      field.velocity = new Float32Array(field.nx * field.ny);
+    }
+    
+    const newField = field.clone();
+    const newVel = new Float32Array(field.velocity);
+    
+    // Stability constraint: dt < dx / c
+    const dtStable = Math.min(dt, field.dx / c);
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const k = i + j * field.nx;
+        const lap = field.laplacian(i, j);
+        
+        // Update velocity: ∂v/∂t = c²·∇²Φ
+        newVel[k] = field.velocity[k] + dtStable * cSq * lap;
+        
+        // Update field: ∂Φ/∂t = v
+        newField.set(i, j, field.get(i, j) + dtStable * newVel[k]);
+      }
+    }
+    
+    field.data.set(newField.data);
+    field.velocity = newVel;
+    return { operator: 'wave', c, dt_used: dtStable };
+  },
+  
+  /**
+   * Rotation: Apply global rotation to the field
+   * θ(t) = θ₀ + ω·t
+   * 
+   * Mathematical: Rotation in physical space, not in field value
+   */
+  rotate: (field, dt, params) => {
+    const omega = params.ω ?? params.omega ?? 0.1;  // Angular velocity
+    const cx = params.cx ?? field.width / 2;
+    const cy = params.cy ?? field.height / 2;
+    
+    const dTheta = omega * dt;
+    const cosT = Math.cos(-dTheta);  // Negative for backward mapping
+    const sinT = Math.sin(-dTheta);
+    
+    const newField = field.clone();
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const x = i * field.dx - cx;
+        const y = j * field.dy - cy;
+        
+        // Rotate backward to find source
+        const xSrc = cosT * x - sinT * y + cx;
+        const ySrc = sinT * x + cosT * y + cy;
+        
+        // Sample with periodic boundaries
+        newField.set(i, j, field.sample(
+          ((xSrc % field.width) + field.width) % field.width,
+          ((ySrc % field.height) + field.height) % field.height
+        ));
+      }
+    }
+    
+    field.data.set(newField.data);
+    return { operator: 'rotate', ω: omega, dθ: dTheta * 180 / π };
+  },
+  
+  /**
+   * Expansion: Radial expansion from center
+   * r(t) = r₀ + v·t
+   * 
+   * Mathematical: Scale transformation in physical space
+   */
+  expand: (field, dt, params) => {
+    const v = params.v ?? 1;  // Expansion velocity
+    const cx = params.cx ?? field.width / 2;
+    const cy = params.cy ?? field.height / 2;
+    
+    // Compute scale factor (expansion means things move outward)
+    // For backward mapping: source_r = current_r / (1 + v*dt/r)
+    // Simplified: scale = 1 - v*dt/R where R is characteristic size
+    const R = Math.min(field.width, field.height) / 2;
+    const scale = 1 / (1 + v * dt / R);
+    
+    const newField = field.clone();
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const x = i * field.dx - cx;
+        const y = j * field.dy - cy;
+        
+        // Scale toward center
+        const xSrc = x * scale + cx;
+        const ySrc = y * scale + cy;
+        
+        // Sample with zero outside
+        if (xSrc >= 0 && xSrc < field.width && ySrc >= 0 && ySrc < field.height) {
+          newField.set(i, j, field.sample(xSrc, ySrc));
+        } else {
+          newField.set(i, j, 0);
+        }
+      }
+    }
+    
+    field.data.set(newField.data);
+    return { operator: 'expand', v, scale };
+  },
+  
+  /**
+   * Oscillate: Modulate field amplitude sinusoidally
+   * Φ(t) = Φ₀ · (1 + a·sin(ω·t))
+   * 
+   * Mathematical: Amplitude modulation, not spatial evolution
+   */
+  oscillate: (field, dt, params, time) => {
+    const omega = params.ω ?? params.omega ?? 1;
+    const amplitude = params.a ?? params.amplitude ?? 0.5;
+    
+    const modulation = 1 + amplitude * Math.sin(omega * time);
+    
+    for (let k = 0; k < field.data.length; k++) {
+      field.data[k] *= modulation;
+    }
+    
+    return { operator: 'oscillate', ω: omega, a: amplitude, mod: modulation };
+  },
+  
+  /**
+   * Phase shift: Add phase to oscillatory initial conditions
+   * For wave/radial/spiral ICs: φ(t) = φ₀ + ω·t
+   * 
+   * Mathematical: Time evolution of phase, not spatial structure
+   */
+  phase: (field, dt, params, time, initialParams) => {
+    const omega = params.ω ?? params.omega ?? 0.5;
+    const dPhi = omega * dt;
+    
+    // Re-generate the field with updated phase
+    if (initialParams && INITIAL_CONDITIONS[initialParams.type]) {
+      const newParams = { ...initialParams, φ: (initialParams.φ ?? 0) + omega * time };
+      INITIAL_CONDITIONS[initialParams.type](field, newParams);
+    }
+    
+    return { operator: 'phase', ω: omega, dφ: dPhi };
+  },
+  
+  /**
+   * Reaction-diffusion: ∂Φ/∂t = D·∇²Φ + R(Φ)
+   * Using simple bistable reaction term: R(Φ) = Φ(1-Φ)(Φ-a)
+   * 
+   * Mathematical: Combines diffusion with nonlinear reaction
+   */
+  react: (field, dt, params) => {
+    const D = params.D ?? 0.5;
+    const a = params.a ?? 0.3;  // Threshold
+    
+    const newField = field.clone();
+    
+    for (let j = 0; j < field.ny; j++) {
+      for (let i = 0; i < field.nx; i++) {
+        const phi = field.get(i, j);
+        const lap = field.laplacian(i, j);
+        
+        // Bistable reaction
+        const reaction = phi * (1 - phi) * (phi - a);
+        
+        newField.set(i, j, phi + dt * (D * lap + reaction));
+      }
+    }
+    
+    field.data.set(newField.data);
+    return { operator: 'react', D, a };
+  },
+  
+  /**
+   * None: No evolution (static field)
+   */
+  none: (field, dt, params) => {
+    return { operator: 'none' };
+  }
+};
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECTION 6: PARSER
+// Converts mathematical notation to internal representation
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Parse the physics specification
+ * 
+ * Format:
+ *   Φ₀ = type(param1=value1, param2=value2)
+ *   ∂Φ/∂t = operator(param1=value1)
+ *   t ∈ [start, end], Δt = step
+ *   canvas = width×height
+ *   colormap = name
+ */
+function parsePhysicsSpec(input) {
+  const spec = {
+    initial: { type: 'wave', params: {} },
+    evolution: { type: 'none', params: {} },
+    time: { start: 0, end: τ, dt: π/4 },
+    canvas: { width: 400, height: 400 },
+    colormap: 'plasma',
+    normalize: true
+  };
+  
+  const lines = input.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('//'));
+  
+  for (const line of lines) {
+    // Initial condition: Φ₀ = type(params) or Φ = type(params)
+    const initialMatch = line.match(/^[Φφ]₀?\s*=\s*(\w+)\s*\(([^)]*)\)\s*$/i);
+    if (initialMatch) {
+      spec.initial.type = initialMatch[1].toLowerCase();
+      spec.initial.params = parseParams(initialMatch[2]);
+      continue;
+    }
+    
+    // Evolution: ∂Φ/∂t = operator(params) or dΦ/dt = ... or evolve = ...
+    const evolveMatch = line.match(/^(?:∂[Φφ]\/∂t|d[Φφ]\/dt|evolve)\s*=\s*(\w+)\s*\(([^)]*)\)\s*$/i);
+    if (evolveMatch) {
+      spec.evolution.type = evolveMatch[1].toLowerCase();
+      spec.evolution.params = parseParams(evolveMatch[2]);
+      continue;
+    }
+    
+    // Time domain: t ∈ [start, end], Δt = step
+    const timeMatch = line.match(/^t\s*[∈∊∋]\s*\[\s*([^,]+)\s*,\s*([^\]]+)\s*\]\s*,?\s*[Δδ]t\s*=\s*(.+)$/i);
+    if (timeMatch) {
+      spec.time.start = evalMathExpr(timeMatch[1]);
+      spec.time.end = evalMathExpr(timeMatch[2]);
+      spec.time.dt = evalMathExpr(timeMatch[3]);
+      continue;
+    }
+    
+    // Simple time: frames = N or n = N
+    const framesMatch = line.match(/^(?:frames|n)\s*=\s*(\d+)$/i);
+    if (framesMatch) {
+      const n = parseInt(framesMatch[1]);
+      spec.time.dt = (spec.time.end - spec.time.start) / n;
+      continue;
+    }
+    
+    // Canvas: canvas = width×height or canvas = WxH
+    const canvasMatch = line.match(/^canvas\s*=\s*(\d+)\s*[×x]\s*(\d+)$/i);
+    if (canvasMatch) {
+      spec.canvas.width = parseInt(canvasMatch[1]);
+      spec.canvas.height = parseInt(canvasMatch[2]);
+      continue;
+    }
+    
+    // Colormap: colormap = name
+    const colormapMatch = line.match(/^colormap\s*=\s*(\w+)$/i);
+    if (colormapMatch) {
+      spec.colormap = colormapMatch[1].toLowerCase();
+      continue;
+    }
+    
+    // Normalize: normalize = true/false
+    const normalizeMatch = line.match(/^normalize\s*=\s*(true|false)$/i);
+    if (normalizeMatch) {
+      spec.normalize = normalizeMatch[1].toLowerCase() === 'true';
+      continue;
+    }
+  }
+  
+  // Calculate number of frames
+  spec.time.nFrames = Math.ceil((spec.time.end - spec.time.start) / spec.time.dt);
+  
+  return spec;
+}
+
+/**
+ * Parse parameter list: "param1=value1, param2=value2"
+ */
+function parseParams(str) {
+  const params = {};
+  if (!str.trim()) return params;
+  
+  const parts = str.split(',');
+  for (const part of parts) {
+    const [key, value] = part.split('=').map(s => s.trim());
+    if (key && value !== undefined) {
+      // Handle Greek letters in keys
+      const normalizedKey = key
+        .replace(/λ/g, 'lambda')
+        .replace(/σ/g, 'sigma')
+        .replace(/φ/g, 'phi')
+        .replace(/θ/g, 'theta')
+        .replace(/ω/g, 'omega');
+      
+      params[normalizedKey] = evalMathExpr(value);
+      // Also keep original Greek key
+      params[key] = params[normalizedKey];
+    }
+  }
+  return params;
+}
+
+/**
+ * Evaluate mathematical expression
+ * Supports: numbers, π, τ, e, basic arithmetic
+ */
+function evalMathExpr(str) {
+  str = str.trim();
+  
+  // Direct number
+  if (/^-?\d+\.?\d*$/.test(str)) {
+    return parseFloat(str);
+  }
+  
+  // Replace mathematical constants
+  let expr = str
+    .replace(/π/g, `(${π})`)
+    .replace(/τ/g, `(${τ})`)
+    .replace(/\\pi/g, `(${π})`)
+    .replace(/\\tau/g, `(${τ})`)
+    .replace(/pi/gi, `(${π})`)
+    .replace(/tau/gi, `(${τ})`)
+    .replace(/\be\b/g, `(${e})`);
+  
+  // Safe eval using Function
+  try {
+    const result = new Function(`return ${expr}`)();
+    return typeof result === 'number' ? result : parseFloat(str) || 0;
+  } catch {
+    return parseFloat(str) || 0;
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECTION 7: RENDERER
+// Converts field state to canvas pixels
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Render a scalar field to a canvas context
+ */
+function renderField(ctx, field, colormap, normalize = true) {
+  const width = ctx.canvas.width;
+  const height = ctx.canvas.height;
+  const imageData = ctx.createImageData(width, height);
+  const data = imageData.data;
+  
+  // Get field range for normalization
+  let [min, max] = field.range();
+  
+  if (!normalize) {
+    min = -1;
+    max = 1;
+  }
+  
+  // Avoid division by zero
+  const range = max - min || 1;
+  
+  // Get colormap function
+  const colorFn = COLORMAPS[colormap] || COLORMAPS.plasma;
+  
+  // Map field to pixels
+  for (let py = 0; py < height; py++) {
+    for (let px = 0; px < width; px++) {
+      // Map pixel coordinates to field coordinates
+      const fx = Math.floor(px * field.nx / width);
+      const fy = Math.floor(py * field.ny / height);
+      
+      // Get field value and normalize to [0, 1]
+      const value = field.get(fx, fy);
+      const t = clamp((value - min) / range, 0, 1);
+      
+      // Get color
+      const [r, g, b] = colorFn(t);
+      
+      // Set pixel
+      const idx = (py * width + px) * 4;
+      data[idx] = r;
+      data[idx + 1] = g;
+      data[idx + 2] = b;
+      data[idx + 3] = 255;
+    }
+  }
+  
+  ctx.putImageData(imageData, 0, 0);
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECTION 8: GIF ENCODER
+// Creates animated GIF from frames
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Simple GIF encoder using LZW compression
+ * Based on gif.js concepts but inline
+ */
+class GIFEncoder {
+  constructor(width, height) {
+    this.width = width;
+    this.height = height;
+    this.frames = [];
+    this.delay = 100;  // ms between frames
+  }
+  
+  setDelay(ms) {
+    this.delay = ms;
+  }
+  
+  addFrame(imageData) {
+    // Quantize to 256 colors
+    const { indexedPixels, palette } = this.quantize(imageData);
+    this.frames.push({ indexedPixels, palette });
+  }
+  
+  quantize(imageData) {
+    // Simple median cut quantization to 256 colors
+    const data = imageData.data;
+    const pixels = [];
+    
+    // Collect unique colors
+    const colorCounts = new Map();
+    for (let i = 0; i < data.length; i += 4) {
+      const key = (data[i] << 16) | (data[i+1] << 8) | data[i+2];
+      colorCounts.set(key, (colorCounts.get(key) || 0) + 1);
+    }
+    
+    // Sort by frequency and take top 256
+    const sortedColors = Array.from(colorCounts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 256);
+    
+    // Build palette
+    const palette = new Uint8Array(256 * 3);
+    const colorToIndex = new Map();
+    
+    for (let i = 0; i < sortedColors.length; i++) {
+      const color = sortedColors[i][0];
+      palette[i * 3] = (color >> 16) & 0xff;
+      palette[i * 3 + 1] = (color >> 8) & 0xff;
+      palette[i * 3 + 2] = color & 0xff;
+      colorToIndex.set(color, i);
+    }
+    
+    // Map pixels to palette indices
+    const indexedPixels = new Uint8Array(this.width * this.height);
+    for (let i = 0; i < data.length; i += 4) {
+      const color = (data[i] << 16) | (data[i+1] << 8) | data[i+2];
+      let index = colorToIndex.get(color);
+      
+      if (index === undefined) {
+        // Find closest color
+        let minDist = Infinity;
+        for (const [c, idx] of colorToIndex) {
+          const dr = ((c >> 16) & 0xff) - data[i];
+          const dg = ((c >> 8) & 0xff) - data[i+1];
+          const db = (c & 0xff) - data[i+2];
+          const dist = dr*dr + dg*dg + db*db;
+          if (dist < minDist) {
+            minDist = dist;
+            index = idx;
+          }
+        }
+      }
+      
+      indexedPixels[i / 4] = index || 0;
+    }
+    
+    return { indexedPixels, palette };
+  }
+  
+  encode() {
+    if (this.frames.length === 0) return null;
+    
+    const buffer = [];
+    const write = (byte) => buffer.push(byte);
+    const writeStr = (str) => { for (let i = 0; i < str.length; i++) write(str.charCodeAt(i)); };
+    const writeShort = (val) => { write(val & 0xff); write((val >> 8) & 0xff); };
+    
+    // GIF Header
+    writeStr('GIF89a');
+    
+    // Logical Screen Descriptor
+    writeShort(this.width);
+    writeShort(this.height);
+    write(0xf7);  // Global color table, 8 bits
+    write(0);     // Background color index
+    write(0);     // Pixel aspect ratio
+    
+    // Global Color Table (from first frame)
+    const globalPalette = this.frames[0].palette;
+    for (let i = 0; i < 256 * 3; i++) {
+      write(globalPalette[i] || 0);
+    }
+    
+    // NETSCAPE extension for looping
+    write(0x21);  // Extension
+    write(0xff);  // Application extension
+    write(11);    // Block size
+    writeStr('NETSCAPE2.0');
+    write(3);     // Sub-block size
+    write(1);     // Loop indicator
+    writeShort(0); // Loop count (0 = infinite)
+    write(0);     // Block terminator
+    
+    // Write each frame
+    for (const frame of this.frames) {
+      // Graphic Control Extension
+      write(0x21);  // Extension
+      write(0xf9);  // Graphic control
+      write(4);     // Block size
+      write(0);     // Disposal method
+      writeShort(Math.round(this.delay / 10));  // Delay in 1/100 sec
+      write(0);     // Transparent color index
+      write(0);     // Block terminator
+      
+      // Image Descriptor
+      write(0x2c);  // Image separator
+      writeShort(0);  // Left
+      writeShort(0);  // Top
+      writeShort(this.width);
+      writeShort(this.height);
+      write(0);  // No local color table
+      
+      // Image Data
+      const minCodeSize = 8;
+      write(minCodeSize);
+      
+      // LZW compress
+      const lzwData = this.lzwEncode(frame.indexedPixels, minCodeSize);
+      
+      // Write in sub-blocks
+      let offset = 0;
+      while (offset < lzwData.length) {
+        const chunkSize = Math.min(255, lzwData.length - offset);
+        write(chunkSize);
+        for (let i = 0; i < chunkSize; i++) {
+          write(lzwData[offset + i]);
+        }
+        offset += chunkSize;
+      }
+      write(0);  // Block terminator
+    }
+    
+    // Trailer
+    write(0x3b);
+    
+    return new Uint8Array(buffer);
+  }
+  
+  lzwEncode(pixels, minCodeSize) {
+    const clearCode = 1 << minCodeSize;
+    const eoiCode = clearCode + 1;
+    
+    let codeSize = minCodeSize + 1;
+    let nextCode = eoiCode + 1;
+    const maxCode = 4096;
+    
+    // Initialize dictionary
+    let dict = new Map();
+    for (let i = 0; i < clearCode; i++) {
+      dict.set(String.fromCharCode(i), i);
+    }
+    
+    const output = [];
+    let bitBuffer = 0;
+    let bitCount = 0;
+    
+    const writeBits = (code, size) => {
+      bitBuffer |= (code << bitCount);
+      bitCount += size;
+      while (bitCount >= 8) {
+        output.push(bitBuffer & 0xff);
+        bitBuffer >>= 8;
+        bitCount -= 8;
+      }
+    };
+    
+    writeBits(clearCode, codeSize);
+    
+    let current = String.fromCharCode(pixels[0]);
+    
+    for (let i = 1; i < pixels.length; i++) {
+      const next = String.fromCharCode(pixels[i]);
+      const combined = current + next;
+      
+      if (dict.has(combined)) {
+        current = combined;
+      } else {
+        writeBits(dict.get(current), codeSize);
+        
+        if (nextCode < maxCode) {
+          dict.set(combined, nextCode++);
+          if (nextCode > (1 << codeSize) && codeSize < 12) {
+            codeSize++;
+          }
+        } else {
+          writeBits(clearCode, codeSize);
+          dict = new Map();
+          for (let j = 0; j < clearCode; j++) {
+            dict.set(String.fromCharCode(j), j);
+          }
+          codeSize = minCodeSize + 1;
+          nextCode = eoiCode + 1;
+        }
+        
+        current = next;
+      }
+    }
+    
+    writeBits(dict.get(current), codeSize);
+    writeBits(eoiCode, codeSize);
+    
+    if (bitCount > 0) {
+      output.push(bitBuffer & 0xff);
+    }
+    
+    return output;
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECTION 9: SIMULATION ENGINE
+// Orchestrates the physics simulation
+// ════════════════════════════════════════════════════════════════════════════
+
+async function runSimulation(spec) {
+  const canvas = document.getElementById('physics-canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Resize canvas
+  canvas.width = spec.canvas.width;
+  canvas.height = spec.canvas.height;
+  
+  // Create field
+  const field = new ScalarField(
+    spec.canvas.width,
+    spec.canvas.height,
+    spec.canvas.width,
+    spec.canvas.height
+  );
+  
+  // Initialize field
+  const initFn = INITIAL_CONDITIONS[spec.initial.type];
+  if (!initFn) {
+    throw new Error(`Unknown initial condition: ${spec.initial.type}`);
+  }
+  const initInfo = initFn(field, spec.initial.params);
+  
+  // Get evolution operator
+  const evolveFn = EVOLUTION_OPERATORS[spec.evolution.type];
+  if (!evolveFn) {
+    throw new Error(`Unknown evolution operator: ${spec.evolution.type}`);
+  }
+  
+  // Create GIF encoder
+  const gif = new GIFEncoder(spec.canvas.width, spec.canvas.height);
+  gif.setDelay(200);  // 200ms per frame
+  
+  const log = [];
+  log.push(`Simulation Parameters:`);
+  log.push(`  Initial: ${JSON.stringify(initInfo)}`);
+  log.push(`  Evolution: ${spec.evolution.type}(${JSON.stringify(spec.evolution.params)})`);
+  log.push(`  Time: [${spec.time.start.toFixed(4)}, ${spec.time.end.toFixed(4)}], Δt = ${spec.time.dt.toFixed(4)}`);
+  log.push(`  Frames: ${spec.time.nFrames}`);
+  log.push(`---`);
+  
+  // Time stepping
+  let t = spec.time.start;
+  let frame = 0;
+  
+  while (t <= spec.time.end && frame < 100) {  // Max 100 frames safety
+    // Render current state
+    renderField(ctx, field, spec.colormap, spec.normalize);
+    
+    // Add frame to GIF
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    gif.addFrame(imageData);
+    
+    // Log
+    const [min, max] = field.range();
+    log.push(`t = ${t.toFixed(4)}: Φ ∈ [${min.toFixed(3)}, ${max.toFixed(3)}]`);
+    
+    // Evolve
+    const evolveInfo = evolveFn(field, spec.time.dt, spec.evolution.params, t, spec.initial.params);
+    
+    t += spec.time.dt;
+    frame++;
+    
+    // Allow UI update
+    await new Promise(r => setTimeout(r, 10));
+  }
+  
+  log.push(`---`);
+  log.push(`Total frames: ${frame}`);
+  
+  // Encode GIF
+  const gifData = gif.encode();
+  const blob = new Blob([gifData], { type: 'image/gif' });
+  const url = URL.createObjectURL(blob);
+  
+  return { url, log };
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// SECTION 10: UI
+// ════════════════════════════════════════════════════════════════════════════
+
+const EXAMPLES = [
+  {
+    name: 'Propagating Wave',
+    code: `Φ₀ = wave(A=1, λ=60, θ=0)
+∂Φ/∂t = advect(c=2)
+t ∈ [0, 2π], Δt = π/8
+canvas = 400×400
+colormap = ocean`
+  },
+  {
+    name: 'Expanding Ring',
+    code: `Φ₀ = ring(A=1, r=50, σ=15)
+∂Φ/∂t = expand(v=0.8)
+t ∈ [0, 2π], Δt = π/6
+canvas = 400×400
+colormap = plasma`
+  },
+  {
+    name: 'Rotating Spiral',
+    code: `Φ₀ = spiral(A=1, λ=40, m=3)
+∂Φ/∂t = rotate(ω=0.3)
+t ∈ [0, 2π], Δt = π/8
+canvas = 400×400
+colormap = phase`
+  },
+  {
+    name: 'Heat Diffusion',
+    code: `Φ₀ = gaussian(A=1, σ=30)
+∂Φ/∂t = diffuse(D=50)
+t ∈ [0, 1], Δt = 0.1
+canvas = 400×400
+colormap = thermal`
+  },
+  {
+    name: 'Wave Interference',
+    code: `Φ₀ = interference(A=1, λ=30, sep=120)
+∂Φ/∂t = phase(ω=0.5)
+t ∈ [0, 2π], Δt = π/6
+canvas = 400×400
+colormap = diverging`
+  },
+  {
+    name: 'Radial Pulse',
+    code: `Φ₀ = radial(A=1, λ=50)
+∂Φ/∂t = advect(c=-1.5)
+t ∈ [0, 2π], Δt = π/8
+canvas = 400×400
+colormap = neon`
+  },
+  {
+    name: 'Reaction-Diffusion',
+    code: `Φ₀ = noise(A=1)
+∂Φ/∂t = react(D=1, a=0.3)
+t ∈ [0, 5], Δt = 0.5
+canvas = 200×200
+colormap = viridis`
+  },
+  {
+    name: 'Standing Wave',
+    code: `Φ₀ = wave(A=1, λ=80)
+∂Φ/∂t = oscillate(ω=2, a=0.8)
+t ∈ [0, 2π], Δt = π/8
+canvas = 400×400
+colormap = diverging`
+  }
+];
+
+function initUI() {
+  const grid = document.getElementById('examples-grid');
+  
+  for (const example of EXAMPLES) {
+    const card = document.createElement('div');
+    card.className = 'example-card';
+    card.innerHTML = `
+      <h4>${example.name}</h4>
+      <code>${example.code}</code>
+    `;
+    card.onclick = () => {
+      document.getElementById('physics-input').value = example.code;
+      executePhysics();
+    };
+    grid.appendChild(card);
+  }
+}
+
+async function executePhysics() {
+  const input = document.getElementById('physics-input').value;
+  const stateOutput = document.getElementById('state-output');
+  const evolutionLog = document.getElementById('evolution-log');
+  const errorDisplay = document.getElementById('error-display');
+  const downloadContainer = document.getElementById('download-container');
+  
+  errorDisplay.style.display = 'none';
+  downloadContainer.style.display = 'none';
+  
+  try {
+    // Parse specification
+    const spec = parsePhysicsSpec(input);
+    
+    stateOutput.innerHTML = `<span class="computed">Parsed successfully:</span>
+    
+Initial: Φ₀ = ${spec.initial.type}(${JSON.stringify(spec.initial.params)})
+Evolution: ∂Φ/∂t = ${spec.evolution.type}(${JSON.stringify(spec.evolution.params)})
+Time: t ∈ [${spec.time.start.toFixed(2)}, ${spec.time.end.toFixed(2)}]
+Steps: ${spec.time.nFrames} frames, Δt = ${spec.time.dt.toFixed(4)}
+Canvas: ${spec.canvas.width}×${spec.canvas.height}
+Colormap: ${spec.colormap}`;
+    
+    evolutionLog.textContent = 'Running simulation...';
+    
+    // Run simulation
+    const result = await runSimulation(spec);
+    
+    evolutionLog.textContent = result.log.join('\n');
+    
+    // Show download link
+    const downloadLink = document.getElementById('download-link');
+    downloadLink.href = result.url;
+    downloadContainer.style.display = 'block';
+    
+  } catch (error) {
+    errorDisplay.textContent = `Error: ${error.message}`;
+    errorDisplay.style.display = 'block';
+    stateOutput.textContent = 'Parse failed';
+    evolutionLog.textContent = error.stack || error.message;
+  }
+}
+
+function clearCanvas() {
+  const canvas = document.getElementById('physics-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#0a0a0f';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  document.getElementById('state-output').textContent = 'Awaiting input...';
+  document.getElementById('evolution-log').textContent = 'No simulation run yet.';
+  document.getElementById('download-container').style.display = 'none';
+}
+
+// Initialize on load
+document.addEventListener('DOMContentLoaded', () => {
+  initUI();
+  clearCanvas();
+});
+</script>
+</body>
+</html>
