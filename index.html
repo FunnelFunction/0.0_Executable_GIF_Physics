@@ -1368,38 +1368,56 @@ const EVOLUTION_OPERATORS = {
    *   - Sharp boundaries (domain walls = ρq shells)
    *   - Bistable states (Φ ≈ ±1 = locked shells)
    *   - Pattern emergence without external template
+   *
+   * STABILITY: Uses substep iteration and field clamping.
+   * The σ_irr concept (v5C): high |∇Φ| regions mark "allowed change zones"
    */
   collapse: (field, dt, params) => {
     const eta = params.η ?? params.eta ?? 1.0;      // Diffusion coefficient
     const lambda = params.λ ?? params.lambda ?? 0.5; // Gradient damping
     const mu = params.μ ?? params.mu ?? 1.0;        // Cubic growth
     const nu = params.ν ?? params.nu ?? 0.0;        // Linear decay
+    const clamp = params.clamp ?? 2.0;              // Max |Φ| (admissibility bound)
     
-    const newField = field.clone();
+    // Stability: compute safe timestep
+    const dtDiffusion = field.dx * field.dx / (4 * Math.max(eta, 0.01));
+    const dtReaction = 1.0 / (3 * mu + nu + 0.01); // CFL for reaction terms
+    const dtSafe = Math.min(dtDiffusion, dtReaction, 0.1);
     
-    // Adaptive timestep for stability
-    const dtStable = Math.min(dt, field.dx * field.dx / (4 * Math.max(eta, 0.1)));
+    // Substep loop: break dt into stable microsteps
+    const nSubsteps = Math.max(1, Math.ceil(dt / dtSafe));
+    const dtSub = dt / nSubsteps;
     
-    for (let j = 0; j < field.ny; j++) {
-      for (let i = 0; i < field.nx; i++) {
-        const phi = field.get(i, j);
-        const lap = field.laplacian(i, j);
-        const gradSq = field.gradientMagnitudeSq(i, j);
-        
-        // CSS Evolution: ∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ³ - νΦ
-        const diffusion = eta * lap;           // Δ₃/Δ₄: Curvature spreading
-        const steepening = -lambda * gradSq;   // Δ₁: Tension concentration
-        const bistable = mu * phi * phi * phi; // Φ³: Cubic nonlinearity
-        const decay = -nu * phi;               // Sθ: Entropic drift
-        
-        const dPhidt = diffusion + steepening + bistable + decay;
-        
-        newField.set(i, j, phi + dtStable * dPhidt);
+    for (let step = 0; step < nSubsteps; step++) {
+      const newField = field.clone();
+      
+      for (let j = 0; j < field.ny; j++) {
+        for (let i = 0; i < field.nx; i++) {
+          const phi = field.get(i, j);
+          const lap = field.laplacian(i, j);
+          const gradSq = field.gradientMagnitudeSq(i, j);
+          
+          // CSS Evolution: ∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ(1-Φ²) - νΦ
+          // Using BOUNDED form Φ(1-Φ²) instead of pure Φ³
+          const diffusion = eta * lap;
+          const steepening = -lambda * gradSq;
+          const bistable = mu * phi * (1 - phi * phi);  // Bounded: pushes toward ±1
+          const decay = -nu * phi;
+          
+          const dPhidt = diffusion + steepening + bistable + decay;
+          let newVal = phi + dtSub * dPhidt;
+          
+          // Field clamping (admissibility gate from v5C)
+          newVal = Math.max(-clamp, Math.min(clamp, newVal));
+          
+          newField.set(i, j, newVal);
+        }
       }
+      
+      field.data.set(newField.data);
     }
     
-    field.data.set(newField.data);
-    return { operator: 'collapse', η: eta, λ: lambda, μ: mu, ν: nu, dt_used: dtStable };
+    return { operator: 'collapse', η: eta, λ: lambda, μ: mu, ν: nu, substeps: nSubsteps };
   },
   
   /**
@@ -1415,29 +1433,45 @@ const EVOLUTION_OPERATORS = {
    * Produces:
    *   - Coarsening dynamics (small domains merge into large)
    *   - Motion by mean curvature (shells minimize boundary)
+   *
+   * STABILITY: Substeps + clamping for robust dynamics
    */
   allen_cahn: (field, dt, params) => {
     const epsilon = params.ε ?? params.epsilon ?? 0.5;
     const epsSq = epsilon * epsilon;
+    const clamp = params.clamp ?? 1.5;
     
-    const newField = field.clone();
-    const dtStable = Math.min(dt, field.dx * field.dx / (4 * epsSq));
+    // Stability constraints
+    const dtDiffusion = field.dx * field.dx / (4 * Math.max(epsSq, 0.01));
+    const dtReaction = 0.5;  // Reaction term Φ(1-Φ²) has bounded derivative near |Φ|=1
+    const dtSafe = Math.min(dtDiffusion, dtReaction, 0.1);
     
-    for (let j = 0; j < field.ny; j++) {
-      for (let i = 0; i < field.nx; i++) {
-        const phi = field.get(i, j);
-        const lap = field.laplacian(i, j);
-        
-        // Allen-Cahn: ∂Φ/∂t = ε²∇²Φ + Φ(1 - Φ²)
-        const diffusion = epsSq * lap;
-        const reaction = phi * (1 - phi * phi);
-        
-        newField.set(i, j, phi + dtStable * (diffusion + reaction));
+    const nSubsteps = Math.max(1, Math.ceil(dt / dtSafe));
+    const dtSub = dt / nSubsteps;
+    
+    for (let step = 0; step < nSubsteps; step++) {
+      const newField = field.clone();
+      
+      for (let j = 0; j < field.ny; j++) {
+        for (let i = 0; i < field.nx; i++) {
+          const phi = field.get(i, j);
+          const lap = field.laplacian(i, j);
+          
+          // Allen-Cahn: ∂Φ/∂t = ε²∇²Φ + Φ(1 - Φ²)
+          const diffusion = epsSq * lap;
+          const reaction = phi * (1 - phi * phi);
+          
+          let newVal = phi + dtSub * (diffusion + reaction);
+          newVal = Math.max(-clamp, Math.min(clamp, newVal));
+          
+          newField.set(i, j, newVal);
+        }
       }
+      
+      field.data.set(newField.data);
     }
     
-    field.data.set(newField.data);
-    return { operator: 'allen_cahn', ε: epsilon, dt_used: dtStable };
+    return { operator: 'allen_cahn', ε: epsilon, substeps: nSubsteps };
   },
   
   /**
@@ -1455,31 +1489,45 @@ const EVOLUTION_OPERATORS = {
    *   - Stripe patterns
    *   - Labyrinthine structures
    *   - Spot arrays
+   *
+   * STABILITY: Rewrites as Φ(α - βΦ²) for bounded dynamics
    */
   ginzburg: (field, dt, params) => {
     const D = params.D ?? 1.0;
-    const alpha = params.α ?? params.alpha ?? 1.0;  // Linear growth
-    const beta = params.β ?? params.beta ?? 1.0;   // Cubic saturation
+    const alpha = params.α ?? params.alpha ?? 1.0;
+    const beta = params.β ?? params.beta ?? 1.0;
+    const clamp = params.clamp ?? Math.sqrt(alpha / beta) * 1.5;  // Stable amplitude ≈ √(α/β)
     
-    const newField = field.clone();
-    const dtStable = Math.min(dt, field.dx * field.dx / (4 * D));
+    const dtDiffusion = field.dx * field.dx / (4 * Math.max(D, 0.01));
+    const dtReaction = 0.5 / Math.max(alpha, beta);
+    const dtSafe = Math.min(dtDiffusion, dtReaction, 0.1);
     
-    for (let j = 0; j < field.ny; j++) {
-      for (let i = 0; i < field.nx; i++) {
-        const phi = field.get(i, j);
-        const lap = field.laplacian(i, j);
-        
-        // Ginzburg-Landau: ∂Φ/∂t = D∇²Φ + αΦ - βΦ³
-        const diffusion = D * lap;
-        const growth = alpha * phi;
-        const saturation = -beta * phi * phi * phi;
-        
-        newField.set(i, j, phi + dtStable * (diffusion + growth + saturation));
+    const nSubsteps = Math.max(1, Math.ceil(dt / dtSafe));
+    const dtSub = dt / nSubsteps;
+    
+    for (let step = 0; step < nSubsteps; step++) {
+      const newField = field.clone();
+      
+      for (let j = 0; j < field.ny; j++) {
+        for (let i = 0; i < field.nx; i++) {
+          const phi = field.get(i, j);
+          const lap = field.laplacian(i, j);
+          
+          // Ginzburg-Landau: ∂Φ/∂t = D∇²Φ + αΦ - βΦ³ = D∇²Φ + Φ(α - βΦ²)
+          const diffusion = D * lap;
+          const reaction = phi * (alpha - beta * phi * phi);
+          
+          let newVal = phi + dtSub * (diffusion + reaction);
+          newVal = Math.max(-clamp, Math.min(clamp, newVal));
+          
+          newField.set(i, j, newVal);
+        }
       }
+      
+      field.data.set(newField.data);
     }
     
-    field.data.set(newField.data);
-    return { operator: 'ginzburg', D, α: alpha, β: beta, dt_used: dtStable };
+    return { operator: 'ginzburg', D, α: alpha, β: beta, substeps: nSubsteps };
   },
   
   /**
@@ -1494,35 +1542,48 @@ const EVOLUTION_OPERATORS = {
    * Produces:
    *   - Spinodal decomposition (sudden phase separation)
    *   - Ostwald ripening (large domains grow, small shrink)
+   *
+   * STABILITY: 4th-order stiffness requires very small timesteps
    */
   cahn_hilliard: (field, dt, params) => {
-    const M = params.M ?? 1.0;     // Mobility
-    const gamma = params.γ ?? params.gamma ?? 1.0;  // Interface energy
+    const M = params.M ?? 1.0;
+    const gamma = params.γ ?? params.gamma ?? 1.0;
+    const clamp = params.clamp ?? 1.5;
     
-    const newField = field.clone();
-    const chemPot = field.clone();
+    // 4th-order stability: dt ∝ dx⁴
+    const dx4 = field.dx * field.dx * field.dx * field.dx;
+    const dtSafe = Math.min(dx4 / (32 * M * Math.max(gamma, 0.1)), 0.01);
     
-    // First compute chemical potential μ = Φ³ - Φ - γ∇²Φ
-    for (let j = 0; j < field.ny; j++) {
-      for (let i = 0; i < field.nx; i++) {
-        const phi = field.get(i, j);
-        const lap = field.laplacian(i, j);
-        chemPot.set(i, j, phi * phi * phi - phi - gamma * lap);
+    const nSubsteps = Math.max(1, Math.ceil(dt / dtSafe));
+    const dtSub = dt / nSubsteps;
+    
+    for (let step = 0; step < nSubsteps; step++) {
+      const newField = field.clone();
+      const chemPot = field.clone();
+      
+      // Chemical potential μ = Φ³ - Φ - γ∇²Φ
+      for (let j = 0; j < field.ny; j++) {
+        for (let i = 0; i < field.nx; i++) {
+          const phi = field.get(i, j);
+          const lap = field.laplacian(i, j);
+          chemPot.set(i, j, phi * phi * phi - phi - gamma * lap);
+        }
       }
+      
+      // Evolve: ∂Φ/∂t = M∇²μ
+      for (let j = 0; j < field.ny; j++) {
+        for (let i = 0; i < field.nx; i++) {
+          const lapMu = chemPot.laplacian(i, j);
+          let newVal = field.get(i, j) + dtSub * M * lapMu;
+          newVal = Math.max(-clamp, Math.min(clamp, newVal));
+          newField.set(i, j, newVal);
+        }
+      }
+      
+      field.data.set(newField.data);
     }
     
-    // Then evolve: ∂Φ/∂t = M∇²μ
-    const dtStable = Math.min(dt, field.dx * field.dx * field.dx * field.dx / (32 * M * gamma));
-    
-    for (let j = 0; j < field.ny; j++) {
-      for (let i = 0; i < field.nx; i++) {
-        const lapMu = chemPot.laplacian(i, j);
-        newField.set(i, j, field.get(i, j) + dtStable * M * lapMu);
-      }
-    }
-    
-    field.data.set(newField.data);
-    return { operator: 'cahn_hilliard', M, γ: gamma, dt_used: dtStable };
+    return { operator: 'cahn_hilliard', M, γ: gamma, substeps: nSubsteps };
   },
   
   /**
@@ -1566,7 +1627,7 @@ const EVOLUTION_OPERATORS = {
   
   /**
    * SWIFT-HOHENBERG: Pattern Selection
-   * ∂Φ/∂t = rΦ - (1 + ∇²)²Φ - Φ³
+   * ∂Φ/∂t = rΦ - (1 + ∇²)²Φ - gΦ³
    * 
    * ITT MAPPING:
    *   Swift-Hohenberg selects a preferred wavelength for patterns.
@@ -1577,42 +1638,57 @@ const EVOLUTION_OPERATORS = {
    * Produces:
    *   - Stripes, hexagons, or labyrinths depending on parameters
    *   - Regular spacing (preferred wavelength)
+   *
+   * STABILITY: Uses bounded form Φ(r - gΦ²) and 4th-order timestep
    */
   swift_hohenberg: (field, dt, params) => {
     const r = params.r ?? 0.3;  // Control parameter (> 0 for patterns)
     const g = params.g ?? 1.0;  // Cubic coefficient
+    const clamp = params.clamp ?? Math.sqrt(Math.max(r, 0.1) / g) * 1.5;  // Stable ≈ √(r/g)
     
-    const newField = field.clone();
-    const temp = field.clone();
+    // 4th-order stability
+    const dx4 = field.dx * field.dx * field.dx * field.dx;
+    const dtSafe = Math.min(dx4 / 16, 0.5 / Math.max(r, g), 0.05);
     
-    // Compute (1 + ∇²)²Φ = Φ + 2∇²Φ + ∇⁴Φ
-    // First compute ∇²Φ
-    for (let j = 0; j < field.ny; j++) {
-      for (let i = 0; i < field.nx; i++) {
-        temp.set(i, j, field.laplacian(i, j));
+    const nSubsteps = Math.max(1, Math.ceil(dt / dtSafe));
+    const dtSub = dt / nSubsteps;
+    
+    for (let step = 0; step < nSubsteps; step++) {
+      const newField = field.clone();
+      const lap = field.clone();
+      
+      // Compute ∇²Φ
+      for (let j = 0; j < field.ny; j++) {
+        for (let i = 0; i < field.nx; i++) {
+          lap.set(i, j, field.laplacian(i, j));
+        }
       }
+      
+      for (let j = 0; j < field.ny; j++) {
+        for (let i = 0; i < field.nx; i++) {
+          const phi = field.get(i, j);
+          const l = lap.get(i, j);
+          const bilap = lap.laplacian(i, j);
+          
+          // (1 + ∇²)²Φ = Φ + 2∇²Φ + ∇⁴Φ
+          const linearOp = phi + 2 * l + bilap;
+          
+          // Use bounded form: Φ(r - gΦ²) instead of rΦ - gΦ³
+          // Equivalent but more stable numerically
+          const reaction = phi * (r - g * phi * phi);
+          
+          // ∂Φ/∂t = reaction - linearOp
+          let newVal = phi + dtSub * (reaction - linearOp);
+          newVal = Math.max(-clamp, Math.min(clamp, newVal));
+          
+          newField.set(i, j, newVal);
+        }
+      }
+      
+      field.data.set(newField.data);
     }
     
-    const dtStable = Math.min(dt, field.dx * field.dx * field.dx * field.dx / 16);
-    
-    for (let j = 0; j < field.ny; j++) {
-      for (let i = 0; i < field.nx; i++) {
-        const phi = field.get(i, j);
-        const lap = temp.get(i, j);
-        const bilap = temp.laplacian(i, j);  // ∇⁴Φ
-        
-        // (1 + ∇²)²Φ = Φ + 2∇²Φ + ∇⁴Φ
-        const linearOp = phi + 2 * lap + bilap;
-        
-        // Swift-Hohenberg: ∂Φ/∂t = rΦ - (1+∇²)²Φ - gΦ³
-        const dPhidt = r * phi - linearOp - g * phi * phi * phi;
-        
-        newField.set(i, j, phi + dtStable * dPhidt);
-      }
-    }
-    
-    field.data.set(newField.data);
-    return { operator: 'swift_hohenberg', r, g, dt_used: dtStable };
+    return { operator: 'swift_hohenberg', r, g, substeps: nSubsteps };
   },
   
   /**
@@ -1629,120 +1705,146 @@ const EVOLUTION_OPERATORS = {
    * Produces:
    *   - Chaotic flame-front-like patterns
    *   - Spatiotemporal complexity
+   *
+   * STABILITY: Chaotic but bounded, use substeps
    */
   kuramoto: (field, dt, params) => {
-    const nu = params.ν ?? params.nu ?? 1.0;  // Hyperdiffusion coefficient
+    const nu = params.ν ?? params.nu ?? 1.0;
+    const clamp = params.clamp ?? 3.0;  // KS is chaotic but bounded
     
-    const newField = field.clone();
-    const lap = field.clone();
+    const dx4 = field.dx * field.dx * field.dx * field.dx;
+    const dtSafe = Math.min(dx4 / (16 * Math.max(nu, 0.1)), 0.05);
     
-    // Compute ∇²Φ
-    for (let j = 0; j < field.ny; j++) {
-      for (let i = 0; i < field.nx; i++) {
-        lap.set(i, j, field.laplacian(i, j));
+    const nSubsteps = Math.max(1, Math.ceil(dt / dtSafe));
+    const dtSub = dt / nSubsteps;
+    
+    for (let step = 0; step < nSubsteps; step++) {
+      const newField = field.clone();
+      const lap = field.clone();
+      
+      // Compute ∇²Φ
+      for (let j = 0; j < field.ny; j++) {
+        for (let i = 0; i < field.nx; i++) {
+          lap.set(i, j, field.laplacian(i, j));
+        }
       }
+      
+      for (let j = 0; j < field.ny; j++) {
+        for (let i = 0; i < field.nx; i++) {
+          const phi = field.get(i, j);
+          const l = lap.get(i, j);
+          const bilap = lap.laplacian(i, j);
+          const gradSq = field.gradientMagnitudeSq(i, j);
+          
+          // KS: ∂Φ/∂t = -∇²Φ - ν∇⁴Φ - |∇Φ|²/2
+          const dPhidt = -l - nu * bilap - 0.5 * gradSq;
+          
+          let newVal = phi + dtSub * dPhidt;
+          newVal = Math.max(-clamp, Math.min(clamp, newVal));
+          
+          newField.set(i, j, newVal);
+        }
+      }
+      
+      field.data.set(newField.data);
     }
     
-    const dtStable = Math.min(dt, field.dx * field.dx * field.dx * field.dx / (16 * nu));
-    
-    for (let j = 0; j < field.ny; j++) {
-      for (let i = 0; i < field.nx; i++) {
-        const phi = field.get(i, j);
-        const l = lap.get(i, j);
-        const bilap = lap.laplacian(i, j);
-        const gradSq = field.gradientMagnitudeSq(i, j);
-        
-        // KS: ∂Φ/∂t = -∇²Φ - ν∇⁴Φ - |∇Φ|²/2
-        const dPhidt = -l - nu * bilap - 0.5 * gradSq;
-        
-        newField.set(i, j, phi + dtStable * dPhidt);
-      }
-    }
-    
-    field.data.set(newField.data);
-    return { operator: 'kuramoto', ν: nu, dt_used: dtStable };
+    return { operator: 'kuramoto', ν: nu, substeps: nSubsteps };
   },
   
   /**
    * CSS with MEMORY: Full Collapse Sentience Simulator
-   * ∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ³ - νΦ + α·δ_drift
-   * Ω^_{n+1} = γ·Ω^_n + (1-γ)·ρq·Φ
+   * ∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ(1-Φ²) - νΦ + α·δ_drift
+   * Ω^_{n+1} = γ·Ω^_n + (1-γ)·ρq·|Φ|
    * δ_drift = ∇²Ω^ - Ω^
    * 
-   * ITT MAPPING:
+   * ITT MAPPING (from v5C):
    *   This is the full CSS system with recursive memory (Ω^).
    *   - Memory field Ω^ accumulates where shells form (ρq = 1)
+   *   - σ_irr concept: high |∇Φ| marks "allowed edit zones"
    *   - Drift feedback δ_drift allows memory to modulate evolution
    *   - When α > 0, system becomes self-referential
    * 
    * This operator maintains internal state across calls.
+   * Uses BOUNDED bistable form Φ(1-Φ²) for stability.
    */
   css: (field, dt, params) => {
     const eta = params.η ?? params.eta ?? 1.0;
-    const lambda = params.λ ?? params.lambda ?? 0.5;
-    const mu = params.μ ?? params.mu ?? 1.0;
+    const lambda = params.λ ?? params.lambda ?? 0.2;
+    const mu = params.μ ?? params.mu ?? 0.5;
     const nu = params.ν ?? params.nu ?? 0.0;
-    const alpha = params.α ?? params.alpha ?? 0.1;    // Memory feedback strength
-    const gamma_mem = params.γ ?? params.gamma ?? 0.95; // Memory persistence
-    const threshold = params.τ ?? params.threshold ?? 0.5; // Shell detection threshold
+    const alpha = params.α ?? params.alpha ?? 0.1;
+    const gamma_mem = params.γ ?? params.gamma ?? 0.95;
+    const threshold = params.τ ?? params.threshold ?? 0.3;
+    const clamp = params.clamp ?? 1.5;
     
     // Initialize memory field if needed
     if (!field.memory) {
       field.memory = new Float32Array(field.nx * field.ny);
     }
     
-    const newField = field.clone();
-    const newMemory = new Float32Array(field.memory);
+    // Stability constraints
+    const dtDiffusion = field.dx * field.dx / (4 * Math.max(eta, 0.01));
+    const dtReaction = 0.5 / Math.max(mu, 0.1);
+    const dtSafe = Math.min(dtDiffusion, dtReaction, 0.1);
     
-    const dtStable = Math.min(dt, field.dx * field.dx / (4 * Math.max(eta, 0.1)));
+    const nSubsteps = Math.max(1, Math.ceil(dt / dtSafe));
+    const dtSub = dt / nSubsteps;
     
-    for (let j = 0; j < field.ny; j++) {
-      for (let i = 0; i < field.nx; i++) {
-        const k = i + j * field.nx;
-        const phi = field.get(i, j);
-        const lap = field.laplacian(i, j);
-        const gradMag = field.gradientMagnitude(i, j);
-        const gradSq = gradMag * gradMag;
-        const omega = field.memory[k];
-        
-        // Shell detection: ρq = 1 where gradient is strong
-        const rho_q = gradMag > threshold ? 1 : 0;
-        
-        // Memory update: Ω^_{n+1} = γ·Ω^_n + (1-γ)·ρq·|Φ|
-        newMemory[k] = gamma_mem * omega + (1 - gamma_mem) * rho_q * Math.abs(phi);
-        
-        // Compute memory Laplacian for drift
-        // (simplified: use finite differences on memory array)
-        const mem_im = field.memory[((i-1+field.nx)%field.nx) + j*field.nx];
-        const mem_ip = field.memory[((i+1)%field.nx) + j*field.nx];
-        const mem_jm = field.memory[i + ((j-1+field.ny)%field.ny)*field.nx];
-        const mem_jp = field.memory[i + ((j+1)%field.ny)*field.nx];
-        const lapOmega = (mem_im + mem_ip + mem_jm + mem_jp - 4*omega) / (field.dx * field.dx);
-        
-        // Drift feedback: δ_drift = ∇²Ω^ - Ω^
-        const delta_drift = lapOmega - omega;
-        
-        // Full CSS Evolution
-        const diffusion = eta * lap;
-        const steepening = -lambda * gradSq;
-        const bistable = mu * phi * phi * phi;
-        const decay = -nu * phi;
-        const feedback = alpha * delta_drift * phi;
-        
-        const dPhidt = diffusion + steepening + bistable + decay + feedback;
-        
-        newField.set(i, j, phi + dtStable * dPhidt);
+    for (let step = 0; step < nSubsteps; step++) {
+      const newField = field.clone();
+      const newMemory = new Float32Array(field.memory);
+      
+      for (let j = 0; j < field.ny; j++) {
+        for (let i = 0; i < field.nx; i++) {
+          const k = i + j * field.nx;
+          const phi = field.get(i, j);
+          const lap = field.laplacian(i, j);
+          const gradMag = field.gradientMagnitude(i, j);
+          const gradSq = gradMag * gradMag;
+          const omega = field.memory[k];
+          
+          // Shell detection (σ_irr concept): ρq = 1 where gradient is strong
+          const rho_q = gradMag > threshold ? 1 : 0;
+          
+          // Memory update: Ω^_{n+1} = γ·Ω^_n + (1-γ)·ρq·|Φ|
+          newMemory[k] = gamma_mem * omega + (1 - gamma_mem) * rho_q * Math.abs(phi);
+          
+          // Memory Laplacian for drift feedback
+          const mem_im = field.memory[((i-1+field.nx)%field.nx) + j*field.nx];
+          const mem_ip = field.memory[((i+1)%field.nx) + j*field.nx];
+          const mem_jm = field.memory[i + ((j-1+field.ny)%field.ny)*field.nx];
+          const mem_jp = field.memory[i + ((j+1)%field.ny)*field.nx];
+          const lapOmega = (mem_im + mem_ip + mem_jm + mem_jp - 4*omega) / (field.dx * field.dx);
+          
+          // Drift feedback: δ_drift = ∇²Ω^ - Ω^
+          const delta_drift = lapOmega - omega;
+          
+          // Full CSS Evolution with BOUNDED bistable form
+          const diffusion = eta * lap;
+          const steepening = -lambda * gradSq;
+          const bistable = mu * phi * (1 - phi * phi);  // Bounded: pushes toward ±1
+          const decay = -nu * phi;
+          const feedback = alpha * delta_drift * phi;
+          
+          const dPhidt = diffusion + steepening + bistable + decay + feedback;
+          
+          let newVal = phi + dtSub * dPhidt;
+          newVal = Math.max(-clamp, Math.min(clamp, newVal));
+          
+          newField.set(i, j, newVal);
+        }
       }
+      
+      field.data.set(newField.data);
+      field.memory = newMemory;
     }
-    
-    field.data.set(newField.data);
-    field.memory = newMemory;
     
     return { 
       operator: 'css', 
       η: eta, λ: lambda, μ: mu, ν: nu, 
       α: alpha, γ: gamma_mem, τ: threshold,
-      dt_used: dtStable 
+      substeps: nSubsteps
     };
   },
   
@@ -2349,14 +2451,15 @@ colormap = diverging`
   // ════════════════════════════════════════════════════════════════════════════
   // PHASE 2: CSS/ITT EXAMPLES
   // Based on Collapse Sentience Simulator and Intent Tensor Theory
+  // Stability: Uses bounded bistable form Φ(1-Φ²) + substeps + clamping
   // ════════════════════════════════════════════════════════════════════════════
   {
     name: '🔬 Domain Coarsening',
     code: `// Allen-Cahn: Bistable phase separation
-// Watch domains grow and merge
-Φ₀ = bistable(ε=0.3, seed=42)
-∂Φ/∂t = allen_cahn(ε=2)
-t ∈ [0, 10], Δt = 0.5
+// Watch domains grow and merge toward ±1
+Φ₀ = bistable(ε=0.5, seed=42)
+∂Φ/∂t = allen_cahn(ε=1.5)
+t ∈ [0, 20], Δt = 1
 canvas = 200×200
 colormap = diverging`
   },
@@ -2364,9 +2467,9 @@ colormap = diverging`
     name: '🔬 Domain Wall Motion',
     code: `// Pre-initialized domains coarsen
 // Motion by mean curvature
-Φ₀ = domains(n=6, dir=vertical, noise=0.1)
-∂Φ/∂t = allen_cahn(ε=1.5)
-t ∈ [0, 15], Δt = 0.75
+Φ₀ = domains(n=5, dir=vertical, noise=0.1)
+∂Φ/∂t = allen_cahn(ε=1)
+t ∈ [0, 25], Δt = 1
 canvas = 200×200
 colormap = diverging`
   },
@@ -2375,18 +2478,18 @@ colormap = diverging`
     code: `// Circular domain shrinks
 // Curvature-driven collapse
 Φ₀ = disk(r=80, sharpness=3)
-∂Φ/∂t = allen_cahn(ε=1)
-t ∈ [0, 20], Δt = 1
+∂Φ/∂t = allen_cahn(ε=0.8)
+t ∈ [0, 30], Δt = 1.5
 canvas = 300×300
 colormap = plasma`
   },
   {
     name: '🔬 CSS Collapse',
-    code: `// Full CSS: ∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ³
-// Spontaneous shell formation
-Φ₀ = bistable(ε=0.2, seed=1337)
-∂Φ/∂t = collapse(η=1, λ=0.3, μ=0.5, ν=0)
-t ∈ [0, 8], Δt = 0.4
+    code: `// Full CSS: ∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ(1-Φ²)
+// Bounded bistable form for stability
+Φ₀ = bistable(ε=0.3, seed=1337)
+∂Φ/∂t = collapse(η=1, λ=0.1, μ=0.8)
+t ∈ [0, 15], Δt = 0.5
 canvas = 200×200
 colormap = plasma`
   },
@@ -2394,9 +2497,9 @@ colormap = plasma`
     name: '🔬 Ginzburg-Landau',
     code: `// Pattern formation from noise
 // Stripes and labyrinths
-Φ₀ = bistable(ε=0.1, seed=999)
-∂Φ/∂t = ginzburg(D=1, α=1, β=1)
-t ∈ [0, 8], Δt = 0.4
+Φ₀ = bistable(ε=0.2, seed=999)
+∂Φ/∂t = ginzburg(D=0.5, α=0.5, β=1)
+t ∈ [0, 20], Δt = 1
 canvas = 200×200
 colormap = viridis`
   },
@@ -2405,38 +2508,38 @@ colormap = viridis`
     code: `// Traveling wave invasion
 // Speed c = 2√(Dr)
 Φ₀ = disk(r=40, sharpness=5)
-∂Φ/∂t = fisher(D=0.5, r=1)
-t ∈ [0, 15], Δt = 0.75
+∂Φ/∂t = fisher(D=0.5, r=0.5)
+t ∈ [0, 20], Δt = 1
 canvas = 300×300
 colormap = thermal`
   },
   {
     name: '🔬 Cahn-Hilliard',
     code: `// Conserved phase separation
-// Spinodal decomposition
-Φ₀ = bistable(ε=0.2, seed=777)
-∂Φ/∂t = cahn_hilliard(M=1, γ=0.5)
-t ∈ [0, 20], Δt = 1
-canvas = 150×150
+// Spinodal decomposition (4th order - slower)
+Φ₀ = bistable(ε=0.3, seed=777)
+∂Φ/∂t = cahn_hilliard(M=0.5, γ=1)
+t ∈ [0, 10], Δt = 0.5
+canvas = 100×100
 colormap = ocean`
   },
   {
     name: '🔬 Swift-Hohenberg',
     code: `// Pattern selection (stripes/hexagons)
 // Preferred wavelength emergence
-Φ₀ = bistable(ε=0.05, seed=2024)
-∂Φ/∂t = swift_hohenberg(r=0.5, g=1)
-t ∈ [0, 30], Δt = 1.5
-canvas = 150×150
+Φ₀ = bistable(ε=0.1, seed=2024)
+∂Φ/∂t = swift_hohenberg(r=0.2, g=1)
+t ∈ [0, 20], Δt = 1
+canvas = 100×100
 colormap = neon`
   },
   {
     name: '🔬 CSS with Memory',
     code: `// Full CSS with recursive memory Ω^
-// Self-referential dynamics
-Φ₀ = domains(n=4, noise=0.2)
-∂Φ/∂t = css(η=1, λ=0.2, μ=0.3, α=0.1, γ=0.9)
-t ∈ [0, 12], Δt = 0.6
+// σ_irr: high |∇Φ| marks "allowed edit zones"
+Φ₀ = domains(n=4, noise=0.15)
+∂Φ/∂t = css(η=0.8, λ=0.1, μ=0.5, α=0.05, γ=0.95)
+t ∈ [0, 20], Δt = 1
 canvas = 200×200
 colormap = plasma`
   },
@@ -2445,8 +2548,8 @@ colormap = plasma`
     code: `// Topological vortex evolution
 // Phase singularity
 Φ₀ = vortex(m=2)
-∂Φ/∂t = collapse(η=0.5, λ=0.1, μ=0.2)
-t ∈ [0, 10], Δt = 0.5
+∂Φ/∂t = collapse(η=0.5, λ=0.05, μ=0.3)
+t ∈ [0, 15], Δt = 0.5
 canvas = 300×300
 colormap = phase`
   }
