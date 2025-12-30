@@ -1,45 +1,60 @@
 # Executable GIF Physics
 
-## Φ → ∂Φ/∂t → Frames
+## Φ → ∂Φ/∂t → Ω^ → CLA^ → Σ → Frames
 
-**A Visual Physics Simulator Based on Intent Tensor Theory**
+**A Self-Resolving Dynamical System Based on Intent Tensor Theory**
 
-*Self-resolving dynamical systems that generate GIF animations through mathematical evolution.*
+*Continuous fields evolve, form shells, crystallize into logic gates, and emit discrete symbols.*
 
 **Built by Armstrong Knight & Abdullah Khan | [FunnelFunction](https://funnelfunction.com)**
 
 ---
 
-## The Paradigm Shift
+## The Complete Pipeline
 
-This is not a drawing tool. It is a **physics simulator** that happens to output GIFs.
+```
+Phase 1-2: Φ evolves     (physics)
+Phase 3:   Ω^ remembers  (where shells formed)
+Phase 4:   CLA^ classifies (logic gates from shells)
+Phase 5:   δ_drift feeds back (memory modifies evolution)
+Phase 6:   Σ emits symbols (discrete tokens from continuous dynamics)
+```
 
-| Traditional GIF Tools | Executable GIF Physics |
-|-----------------------|------------------------|
-| User specifies each frame | User specifies initial conditions |
-| System renders what's requested | System computes what happens |
-| Static frames, manually arranged | Dynamic evolution, mathematically derived |
-| User is designer | User is physicist |
-| System is renderer | System is simulator |
+This is not a drawing tool. It is a **physics simulator** that outputs GIFs while simultaneously:
+- Computing nonlinear PDEs
+- Tracking memory of where dynamics occurred
+- Classifying shell configurations as logic gates
+- Emitting discrete symbols from continuous evolution
 
 ---
 
-## Mathematical Architecture
-
-### The Core Equation
+## Quick Start
 
 ```
-∂Φ/∂t = L[Φ]
+Φ₀ = bistable(ε=0.4, seed=42)
+∂Φ/∂t = sigma(η=0.8, λ=0.1, μ=0.6, α=0.05)
+t ∈ [0, 25], Δt = 1
+canvas = 150×150
+colormap = plasma
 ```
 
-Where:
-- **Φ(x, y, t)** is a scalar field over space and time
-- **L** is a differential operator (the "law of physics")
-- **t** is time
+This runs the **full pipeline**: CSS evolution with memory, CLA^ classification, and symbol emission Σ.
 
-The system computes **Φ(t)** by numerical integration, then renders each timestep as a GIF frame.
+---
 
-### The Computational Flow
+## Architecture
+
+### The Six Phases
+
+| Phase | Component | What It Does |
+|-------|-----------|--------------|
+| **1-2** | Φ(x,y,t) | Scalar field evolves via PDEs (diffusion, waves, nonlinear dynamics) |
+| **3** | Ω^(x,y,t) | Memory field accumulates where shells (high gradient regions) form |
+| **4** | CLA^[i,j] | Collapse Logic Algebra classifies shell configurations as logic gates |
+| **5** | δ_drift | Memory feeds back into evolution: δ_drift = ∇²Ω^ - Ω^ |
+| **6** | Σ | Symbol emission: discrete tokens emerge from continuous dynamics |
+
+### Mathematical Flow
 
 ```
 Φ₀(x,y)         Initial State (what EXISTS)
@@ -48,9 +63,13 @@ L[Φ]            Evolution Operator (how it CHANGES)
     ↓
 Φ(x,y,t)        Solution (what HAPPENS)
     ↓
-colormap        Observation (what we SEE)
+Ω^(x,y,t)       Memory (what PERSISTS)
     ↓
-GIF             Output (what we SAVE)
+CLA^[i,j]       Logic Gates (what COMPUTES)
+    ↓
+Σ               Symbols (what it SAYS)
+    ↓
+GIF + Log       Output (what we SEE)
 ```
 
 ---
@@ -75,241 +94,165 @@ colormap = name
 | τ | 2π = 6.28318... | `t ∈ [0, τ]` |
 | e | 2.71828... | Euler's number |
 
-### Time Domain
-
-The time domain determines how many frames are generated:
-
-```
-t ∈ [0, 2π], Δt = π/4
-```
-
-This generates `2π / (π/4) = 8` frames.
-
-Alternatively:
-```
-frames = 8
-```
-
 ---
 
 ## Initial Conditions (Φ₀)
 
-### Wave
-```
-Φ₀ = wave(A=amplitude, λ=wavelength, φ=phase, θ=angle)
-```
+### Phase 1: Basic Fields
 
-Mathematical form: **Φ₀(x, y) = A · sin(k·x·cos(θ) + k·y·sin(θ) + φ)**
+| Type | Form | Description |
+|------|------|-------------|
+| `wave(A, λ, θ)` | A·sin(k·x + φ) | Plane wave |
+| `gaussian(A, σ)` | A·exp(-r²/2σ²) | Localized bump |
+| `ring(A, r, σ)` | A·exp(-(r-r₀)²/2σ²) | Circular ring |
+| `radial(A, λ)` | A·sin(k·r) | Concentric waves |
+| `spiral(A, λ, m)` | A·sin(k·r + m·θ) | m-armed spiral |
+| `interference(A, λ, sep)` | A·(sin(k·r₁) + sin(k·r₂)) | Two-source pattern |
+| `noise(A, seed)` | Random [0, A] | White noise |
+| `constant(c)` | c | Uniform field |
 
-Where k = 2π/λ is the wave number.
+### Phase 2: CSS Fields
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| A | Amplitude | 1 |
-| λ | Wavelength (pixels) | 50 |
-| φ | Initial phase | 0 |
-| θ | Propagation angle (degrees) | 0 |
-
-### Gaussian
-```
-Φ₀ = gaussian(A=amplitude, x=center_x, y=center_y, σ=width)
-```
-
-Mathematical form: **Φ₀(x, y) = A · exp(-((x-x₀)² + (y-y₀)²) / (2σ²))**
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| A | Peak amplitude | 1 |
-| x, y | Center position | canvas center |
-| σ | Standard deviation (width) | 30 |
-
-### Ring
-```
-Φ₀ = ring(A=amplitude, r=radius, σ=width, x=cx, y=cy)
-```
-
-Mathematical form: **Φ₀(x, y) = A · exp(-(r - r₀)² / (2σ²))**
-
-Where r = √((x-x₀)² + (y-y₀)²)
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| A | Peak amplitude | 1 |
-| r | Ring radius | 50 |
-| σ | Ring width | 10 |
-| x, y | Center | canvas center |
-
-### Radial
-```
-Φ₀ = radial(A=amplitude, λ=wavelength, φ=phase, x=cx, y=cy)
-```
-
-Mathematical form: **Φ₀(x, y) = A · sin(k·r + φ)**
-
-Concentric circular waves emanating from center.
-
-### Spiral
-```
-Φ₀ = spiral(A=amplitude, λ=wavelength, m=arms, φ=phase)
-```
-
-Mathematical form: **Φ₀(x, y) = A · sin(k·r + m·θ + φ)**
-
-Where (r, θ) are polar coordinates and m is the number of spiral arms.
-
-### Interference
-```
-Φ₀ = interference(A=amplitude, λ=wavelength, sep=separation)
-```
-
-Mathematical form: **Φ₀ = A·(sin(k·r₁) + sin(k·r₂))**
-
-Two-source interference pattern.
-
-### Checkerboard
-```
-Φ₀ = checkerboard(A=amplitude, size=checker_size)
-```
-
-Mathematical form: **Φ₀(x, y) = A · sign(sin(kx·x) · sin(ky·y))**
-
-### Noise
-```
-Φ₀ = noise(A=amplitude, seed=random_seed)
-```
-
-Random field: **Φ₀(x, y) ~ Uniform(0, A)**
-
-### Constant
-```
-Φ₀ = constant(c=value)
-```
-
-Uniform field: **Φ₀(x, y) = c**
+| Type | Description | Use With |
+|------|-------------|----------|
+| `bistable(ε, seed, bias)` | Small noise ε·random[-1,1] | Allen-Cahn, CSS |
+| `domains(n, dir, noise)` | Pre-initialized ±1 stripes | Allen-Cahn |
+| `disk(r, sharpness)` | Central +1 region | Curvature flow |
+| `vortex(m)` | Topological singularity | Phase dynamics |
+| `turing(A, seed)` | Turing-optimized noise | Pattern formation |
 
 ---
 
 ## Evolution Operators (∂Φ/∂t)
 
-### Advection
+### Phase 1: Linear Operators
+
+| Operator | Equation | Description |
+|----------|----------|-------------|
+| `advect(c)` | ∂Φ/∂t = -c·∇Φ | Transport |
+| `diffuse(D)` | ∂Φ/∂t = D·∇²Φ | Heat equation |
+| `wave(c)` | ∂²Φ/∂t² = c²·∇²Φ | Wave equation |
+| `rotate(ω)` | θ(t) = θ₀ + ω·t | Rotation |
+| `expand(v)` | r(t) = r₀ + v·t | Radial expansion |
+| `oscillate(ω, a)` | Φ(t) = Φ₀·(1 + a·sin(ω·t)) | Pulsing |
+| `phase(ω)` | φ(t) = φ₀ + ω·t | Phase advance |
+
+### Phase 2: Nonlinear PDEs
+
+| Operator | Equation | Description |
+|----------|----------|-------------|
+| `allen_cahn(ε)` | ε²∇²Φ + Φ(1-Φ²) | Bistable coarsening |
+| `ginzburg(D, α, β)` | D∇²Φ + αΦ - βΦ³ | Pattern formation |
+| `cahn_hilliard(M, γ)` | M∇²(Φ³ - Φ - γ∇²Φ) | Conserved separation |
+| `fisher(D, r)` | D∇²Φ + rΦ(1-Φ) | Traveling fronts |
+| `swift_hohenberg(r, g)` | rΦ - (1+∇²)²Φ - gΦ³ | Wavelength selection |
+| `kuramoto(ν)` | -∇²Φ - ν∇⁴Φ - \|∇Φ\|²/2 | Spatiotemporal chaos |
+| `collapse(η, λ, μ)` | η∇²Φ - λ\|∇Φ\|² + μΦ(1-Φ²) | Full CSS (bounded) |
+
+### Phase 3 & 5: Memory Operators
+
+| Operator | Description |
+|----------|-------------|
+| `css(η, λ, μ, α, γ, τ)` | Full CSS with memory Ω^ and drift feedback δ_drift |
+
+**Memory equation:** Ω^[n+1] = γ·Ω^[n] + (1-γ)·ρq·|Φ|
+
+**Drift feedback:** δ_drift = ∇²Ω^ - Ω^
+
+**Evolution:** ∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ(1-Φ²) + α·δ_drift·Φ
+
+| Parameter | Symbol | Description |
+|-----------|--------|-------------|
+| η | Diffusion | Curvature spreading |
+| λ | Steepening | Tension concentration |
+| μ | Bistable | Reaction strength |
+| α | Feedback | Memory → evolution coupling |
+| γ | Persistence | How long memory lasts (0-1) |
+| τ | Threshold | Gradient needed for shell detection |
+
+### Phase 4: CLA^ Operators
+
+| Operator | Description |
+|----------|-------------|
+| `cla_view(k)` | Visualize CLA states (use with `colormap=cla`) |
+| `cla_css(η, μ, k)` | CSS evolution modulated by logic gates |
+| `cla_count(...)` | CSS + log gate counts each frame |
+
+**CLA^ State Classification:**
+
+| State | Name | Color | Description |
+|-------|------|-------|-------------|
+| 0 | VOID | Black | No shells in neighborhood |
+| 1 | PASS | Gray | Single shell direction (signal propagates) |
+| 2 | AND | Red | Converging shells (conjunction) |
+| 3 | OR | Blue | Diverging shells (disjunction) |
+| 4 | NOT | Yellow | Enclosed by shells (negation context) |
+| 5 | XOR | Magenta | Perpendicular crossing (exclusive or) |
+| 6 | LATCH | White | Dense shell region (memory lock) |
+
+### Phase 6: Symbol Emission Σ
+
+| Operator | Description |
+|----------|-------------|
+| `sigma(η, λ, μ, α, γ)` | Full pipeline: CSS + memory + CLA^ + symbols |
+| `sigma_view(...)` | Visualize emission hotspots |
+| `sigma_collapse(...)` | Simpler collapse + symbols |
+| `sigma_allen_cahn(ε)` | Allen-Cahn + symbols |
+
+**Symbol Vocabulary:**
+
+| Symbol | Name | Trigger |
+|--------|------|---------|
+| ρ | shell | New termination surfaces form |
+| λ | latch | Memory lock stabilizes (N frames) |
+| ∧ | and | AND gate count surges |
+| ∨ | or | OR gate count surges |
+| ¬ | not | NOT context emerges |
+| ⊕ | xor | XOR crossing emerges |
+| Ω | memory | Memory threshold crossed |
+| ↓ | collapse | Field mean decreases |
+| ↑ | expand | Field mean increases |
+| • | pulse | Transient range spike |
+| ∅ | void | Ground state expands |
+| ∞ | saturate | Field hits clamp bounds |
+
+**Example Output (Evolution Log):**
 ```
-∂Φ/∂t = advect(c=velocity)
-∂Φ/∂t = advect(cx=vx, cy=vy)
+t = 5.0000: Φ ∈ [-0.998, 0.998] | Σ: ρ(shell) ∧(and)
+t = 6.0000: Φ ∈ [-1.000, 1.000] | Σ: λ(latch)
+---
+═══ SYMBOL EMISSION Σ ═══
+Σ Sequence: ρ∧λρ∨Ω
+Total symbols: 6
+Frequencies: ρ:2 ∧:1 λ:1 ∨:1 Ω:1
+Patterns: "ρ∧"×2
 ```
-
-Mathematical form: **∂Φ/∂t = -c · ∇Φ**
-
-Transports the field along direction c. Makes waves propagate.
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| c | Velocity (isotropic) | 1 |
-| cx, cy | Velocity components | c, 0 |
-
-### Diffusion
-```
-∂Φ/∂t = diffuse(D=coefficient)
-```
-
-Mathematical form: **∂Φ/∂t = D · ∇²Φ**
-
-The heat equation. Field spreads out and smooths over time.
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| D | Diffusion coefficient | 0.1 |
-
-### Wave Equation
-```
-∂Φ/∂t = wave(c=speed)
-```
-
-Mathematical form: **∂²Φ/∂t² = c² · ∇²Φ**
-
-True wave dynamics with velocity field. Preserves wave structure.
-
-### Rotation
-```
-∂Φ/∂t = rotate(ω=angular_velocity)
-```
-
-Mathematical form: **θ(t) = θ₀ + ω·t**
-
-Rotates the entire field around the center.
-
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| ω | Angular velocity (rad/time) | 0.1 |
-| cx, cy | Rotation center | canvas center |
-
-### Expansion
-```
-∂Φ/∂t = expand(v=velocity)
-```
-
-Mathematical form: **r(t) = r₀ + v·t**
-
-Radial expansion from center. Makes patterns grow outward.
-
-### Oscillation
-```
-∂Φ/∂t = oscillate(ω=frequency, a=amplitude)
-```
-
-Mathematical form: **Φ(t) = Φ₀ · (1 + a·sin(ω·t))**
-
-Modulates field amplitude sinusoidally. Creates pulsing effect.
-
-### Phase Shift
-```
-∂Φ/∂t = phase(ω=frequency)
-```
-
-Advances the phase of oscillatory initial conditions:
-**φ(t) = φ₀ + ω·t**
-
-Works with wave, radial, spiral initial conditions.
-
-### Reaction-Diffusion
-```
-∂Φ/∂t = react(D=diffusion, a=threshold)
-```
-
-Mathematical form: **∂Φ/∂t = D·∇²Φ + Φ(1-Φ)(Φ-a)**
-
-Bistable reaction-diffusion. Creates organic patterns.
-
-### None
-```
-∂Φ/∂t = none()
-```
-
-Static field. No evolution.
 
 ---
 
 ## Colormaps
 
-Maps field values Φ ∈ [min, max] to colors.
-
 | Name | Description | Best For |
 |------|-------------|----------|
 | `plasma` | Blue → Purple → Orange → Yellow | General fields |
-| `viridis` | Purple → Blue → Green → Yellow | Scientific data |
-| `thermal` | Black → Red → Yellow → White | Temperature/intensity |
-| `ocean` | Deep blue → Cyan → White | Wave fields |
-| `diverging` | Blue → White → Red | Positive/negative values |
-| `neon` | Dark with bright signal | Structure emphasis |
-| `grayscale` | Black → White | Simple visualization |
-| `phase` | Cyclic (returns to start) | Periodic quantities |
+| `viridis` | Purple → Blue → Green → Yellow | Scientific |
+| `thermal` | Black → Red → Yellow → White | Intensity |
+| `ocean` | Deep blue → Cyan → White | Waves |
+| `diverging` | Blue → White → Red | ±values |
+| `neon` | Dark with bright signal | Structure |
+| `grayscale` | Black → White | Simple |
+| `phase` | Cyclic HSV | Periodic |
+| `cla` | Discrete 7-color | CLA^ states |
+| `shells` | Dark with bright shells | ρq visualization |
 
 ---
 
-## Examples
+## Examples by Phase
 
-### 1. Propagating Plane Wave
+### Phase 1: Basic Physics
 
 ```
+// Propagating wave
 Φ₀ = wave(A=1, λ=60, θ=0)
 ∂Φ/∂t = advect(c=2)
 t ∈ [0, 2π], Δt = π/8
@@ -317,23 +260,8 @@ canvas = 400×400
 colormap = ocean
 ```
 
-A sinusoidal wave moving to the right.
-
-### 2. Expanding Ring
-
 ```
-Φ₀ = ring(A=1, r=50, σ=15)
-∂Φ/∂t = expand(v=0.8)
-t ∈ [0, 2π], Δt = π/6
-canvas = 400×400
-colormap = plasma
-```
-
-A ring that grows outward from the center.
-
-### 3. Rotating Spiral
-
-```
+// Rotating spiral
 Φ₀ = spiral(A=1, λ=40, m=3)
 ∂Φ/∂t = rotate(ω=0.3)
 t ∈ [0, 2π], Δt = π/8
@@ -341,423 +269,142 @@ canvas = 400×400
 colormap = phase
 ```
 
-A three-armed spiral that rotates.
-
-### 4. Heat Diffusion
+### Phase 2: Nonlinear PDEs
 
 ```
-Φ₀ = gaussian(A=1, σ=30)
-∂Φ/∂t = diffuse(D=50)
-t ∈ [0, 1], Δt = 0.1
-canvas = 400×400
-colormap = thermal
-```
-
-A hot spot spreading out over time.
-
-### 5. Two-Source Interference
-
-```
-Φ₀ = interference(A=1, λ=30, sep=120)
-∂Φ/∂t = phase(ω=0.5)
-t ∈ [0, 2π], Δt = π/6
-canvas = 400×400
+// Allen-Cahn domain coarsening
+Φ₀ = bistable(ε=0.5, seed=42)
+∂Φ/∂t = allen_cahn(ε=1.5)
+t ∈ [0, 20], Δt = 1
+canvas = 200×200
 colormap = diverging
 ```
 
-Interference pattern with evolving phase.
-
-### 6. Radial Pulse (Inward)
-
 ```
-Φ₀ = radial(A=1, λ=50)
-∂Φ/∂t = advect(c=-1.5)
-t ∈ [0, 2π], Δt = π/8
-canvas = 400×400
+// Swift-Hohenberg patterns
+Φ₀ = bistable(ε=0.1, seed=2024)
+∂Φ/∂t = swift_hohenberg(r=0.2, g=1)
+t ∈ [0, 20], Δt = 1
+canvas = 100×100
 colormap = neon
 ```
 
-Concentric rings moving inward.
-
-### 7. Reaction-Diffusion Patterns
+### Phase 3 & 5: Memory + Drift
 
 ```
-Φ₀ = noise(A=1)
-∂Φ/∂t = react(D=1, a=0.3)
-t ∈ [0, 5], Δt = 0.5
+// Full CSS with memory feedback
+Φ₀ = domains(n=4, noise=0.15)
+∂Φ/∂t = css(η=0.8, λ=0.1, μ=0.5, α=0.05, γ=0.95)
+t ∈ [0, 20], Δt = 1
 canvas = 200×200
-colormap = viridis
-```
-
-Emergent patterns from noise.
-
-### 8. Standing Wave (Pulsing)
-
-```
-Φ₀ = wave(A=1, λ=80)
-∂Φ/∂t = oscillate(ω=2, a=0.8)
-t ∈ [0, 2π], Δt = π/8
-canvas = 400×400
-colormap = diverging
-```
-
-A wave pattern that pulses in intensity.
-
-### 9. Diagonal Wave
-
-```
-Φ₀ = wave(A=1, λ=50, θ=45)
-∂Φ/∂t = advect(cx=1.5, cy=1.5)
-t ∈ [0, 2π], Δt = π/8
-canvas = 400×400
-colormap = ocean
-```
-
-Wave propagating diagonally.
-
-### 10. Rotating Radial Pattern
-
-```
-Φ₀ = radial(A=1, λ=40)
-∂Φ/∂t = rotate(ω=0.5)
-t ∈ [0, 2π], Δt = π/8
-canvas = 400×400
 colormap = plasma
 ```
 
-Concentric rings that rotate (creates spiral illusion).
-
-### 11. Checkerboard Diffusion
+### Phase 4: CLA^ Logic Gates
 
 ```
-Φ₀ = checkerboard(A=1, size=30)
-∂Φ/∂t = diffuse(D=20)
-t ∈ [0, 2], Δt = 0.2
-canvas = 400×400
-colormap = grayscale
+// Visualize logic states
+Φ₀ = domains(n=4, noise=0.2)
+∂Φ/∂t = cla_view(k=0.8)
+t ∈ [0, 10], Δt = 0.5
+canvas = 200×200
+colormap = cla
 ```
 
-Sharp checkerboard blurring over time.
-
-### 12. Multi-Arm Spiral
-
 ```
-Φ₀ = spiral(A=1, λ=30, m=6)
-∂Φ/∂t = rotate(ω=-0.4)
-t ∈ [0, 2π], Δt = π/6
-canvas = 400×400
-colormap = phase
+// Evolution modulated by gates
+Φ₀ = bistable(ε=0.4, seed=42)
+∂Φ/∂t = cla_css(η=0.8, μ=0.5, k=1.0)
+t ∈ [0, 20], Δt = 1
+canvas = 200×200
+colormap = plasma
 ```
 
-Six-armed spiral rotating backwards.
-
-### 13. Gaussian Pulse Expansion
+### Phase 6: Symbol Emission Σ
 
 ```
-Φ₀ = gaussian(A=1, σ=20)
-∂Φ/∂t = expand(v=1.2)
-t ∈ [0, π], Δt = π/8
-canvas = 400×400
+// Full pipeline with symbol output
+Φ₀ = bistable(ε=0.4, seed=42)
+∂Φ/∂t = sigma(η=0.8, λ=0.1, μ=0.6, α=0.05, γ=0.9)
+t ∈ [0, 25], Δt = 1
+canvas = 150×150
+colormap = plasma
+```
+
+```
+// Visualize emission hotspots
+Φ₀ = domains(n=4, noise=0.15)
+∂Φ/∂t = sigma_view(η=0.8, μ=0.5, α=0.05)
+t ∈ [0, 20], Δt = 1
+canvas = 200×200
 colormap = thermal
 ```
 
-A localized pulse that expands into a ring.
-
-### 14. Slow Wave Evolution
-
-```
-Φ₀ = wave(A=1, λ=100)
-∂Φ/∂t = advect(c=0.5)
-t ∈ [0, 4π], Δt = π/4
-canvas = 400×400
-colormap = ocean
-```
-
-Long wavelength, slow propagation.
-
-### 15. Rapid Oscillation
-
-```
-Φ₀ = radial(A=1, λ=60)
-∂Φ/∂t = oscillate(ω=4, a=0.9)
-t ∈ [0, 2π], Δt = π/16
-canvas = 400×400
-colormap = neon
-```
-
-Fast-pulsing radial pattern.
-
 ---
 
-## The Mathematics in Depth
+## Mathematical Foundations
 
 ### Scalar Fields
 
 A scalar field **Φ: Ω → ℝ** assigns a real number to each point in space.
 
-**Discretization:** We approximate continuous space with a grid:
+**Discretization:**
 ```
 Φ(x, y) ≈ Φᵢⱼ where x = i·Δx, y = j·Δy
 ```
 
-### Gradient
+### Differential Operators
 
-The gradient **∇Φ** points in the direction of steepest increase:
+**Gradient:**
 ```
 ∇Φ = (∂Φ/∂x, ∂Φ/∂y)
 ```
 
-Computed numerically using central differences:
+**Laplacian:**
 ```
-∂Φ/∂x ≈ (Φᵢ₊₁,ⱼ - Φᵢ₋₁,ⱼ) / (2Δx)
-```
-
-### Laplacian
-
-The Laplacian **∇²Φ** measures how different a point is from its neighbors:
-```
-∇²Φ = ∂²Φ/∂x² + ∂²Φ/∂y²
+∇²Φ = ∂²Φ/∂x² + ∂²Φ/∂y² ≈ (Φᵢ₊₁,ⱼ + Φᵢ₋₁,ⱼ + Φᵢ,ⱼ₊₁ + Φᵢ,ⱼ₋₁ - 4Φᵢⱼ) / Δx²
 ```
 
-Computed numerically:
+**Gradient Magnitude (Shell Detector):**
 ```
-∇²Φ ≈ (Φᵢ₊₁,ⱼ + Φᵢ₋₁,ⱼ + Φᵢ,ⱼ₊₁ + Φᵢ,ⱼ₋₁ - 4Φᵢⱼ) / Δx²
+|∇Φ| = √((∂Φ/∂x)² + (∂Φ/∂y)²)
+ρq = 1 where |∇Φ| > threshold, 0 otherwise
 ```
-
-### Time Stepping
-
-We evolve the field using Euler's method:
-```
-Φ(t + Δt) ≈ Φ(t) + Δt · (∂Φ/∂t)
-```
-
-Each timestep produces one GIF frame.
 
 ### Stability
 
-Numerical stability requires:
-- **Diffusion:** Δt < Δx² / (4D)
-- **Advection:** Δt < Δx / |c| (CFL condition)
-- **Wave:** Δt < Δx / c
+The engine uses:
+- **Substep iteration:** Large Δt broken into stable microsteps
+- **Field clamping:** |Φ| ≤ clamp prevents runaway
+- **Bounded bistable form:** Φ(1-Φ²) instead of Φ³
 
-The engine automatically enforces these constraints.
-
----
-
-## Phase 2: CSS (Collapse Sentience Simulator) Operators
-
-Phase 2 introduces nonlinear evolution operators based on the Intent Tensor Theory mathematical foundations. These operators produce spontaneous pattern formation, domain walls, and self-organizing dynamics.
-
-### The Collapse Genesis Stack
-
-```
-Φ → ∇Φ → ∇×F → ∇²Φ → ρq
-↓     ↓      ↓       ↓      ↓
-0D   1D    2D     3D    3D+
-```
-
-Each operator in Phase 2 encodes a layer of dimensional emergence.
-
----
-
-### CSS Initial Conditions
-
-#### Bistable Noise
-```
-Φ₀ = bistable(ε=amplitude, bias=0, seed=42)
-```
-Small random perturbations around the unstable equilibrium (Φ ≈ 0). Under bistable evolution, spontaneously organizes into domains of Φ ≈ ±1.
-
-#### Domains
-```
-Φ₀ = domains(n=4, dir=vertical, noise=0.05)
-```
-Pre-initialized stripes of +1 and -1. Watch domain walls move under coarsening dynamics.
-
-#### Disk
-```
-Φ₀ = disk(r=50, sharpness=5)
-```
-Central region of +1 surrounded by -1. Models a single coherent shell.
-
-#### Turing Seed
-```
-Φ₀ = turing(A=0.5, seed=1234)
-```
-Noise optimized for Turing pattern formation.
-
-#### Vortex
-```
-Φ₀ = vortex(m=1)
-```
-Topological phase singularity with winding number m.
-
----
-
-### CSS Evolution Operators
-
-#### Collapse (Full CSS)
-```
-∂Φ/∂t = collapse(η=1, λ=0.5, μ=1, ν=0)
-```
-
-Mathematical form: **∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ³ - νΦ**
-
-ITT Mapping:
-| Term | Symbol | ITT Meaning |
-|------|--------|-------------|
-| η∇²Φ | Δ₃/Δ₄ | Curvature spreading |
-| -λ\|∇Φ\|² | Δ₁ | Tension concentration |
-| +μΦ³ | Lock | Cubic bistability |
-| -νΦ | Sθ | Entropic decay |
-
-#### Allen-Cahn
-```
-∂Φ/∂t = allen_cahn(ε=0.5)
-```
-
-Mathematical form: **∂Φ/∂t = ε²∇²Φ + Φ(1 - Φ²)**
-
-Bistable dynamics with stable states Φ = ±1. Domain walls form where Φ = 0 and move by mean curvature. Small domains shrink, large domains grow.
-
-#### Ginzburg-Landau
-```
-∂Φ/∂t = ginzburg(D=1, α=1, β=1)
-```
-
-Mathematical form: **∂Φ/∂t = D∇²Φ + αΦ - βΦ³**
-
-Universal equation for pattern formation near critical points. Produces stripes, labyrinths, and spot arrays.
-
-#### Cahn-Hilliard
-```
-∂Φ/∂t = cahn_hilliard(M=1, γ=1)
-```
-
-Mathematical form: **∂Φ/∂t = M∇²(Φ³ - Φ - γ∇²Φ)**
-
-Conserved phase separation. Total Φ is preserved while the field reorganizes into domains. Produces spinodal decomposition and Ostwald ripening.
-
-#### Fisher-KPP
-```
-∂Φ/∂t = fisher(D=1, r=1)
-```
-
-Mathematical form: **∂Φ/∂t = D∇²Φ + rΦ(1 - Φ)**
-
-Traveling wave fronts. Wave speed c = 2√(Dr). Models invasion of Φ=0 regions by Φ=1.
-
-#### Swift-Hohenberg
-```
-∂Φ/∂t = swift_hohenberg(r=0.3, g=1)
-```
-
-Mathematical form: **∂Φ/∂t = rΦ - (1 + ∇²)²Φ - gΦ³**
-
-Pattern selection with preferred wavelength. Produces regular stripes, hexagons, or labyrinths depending on parameters.
-
-#### Kuramoto-Sivashinsky
-```
-∂Φ/∂t = kuramoto(ν=1)
-```
-
-Mathematical form: **∂Φ/∂t = -∇²Φ - ν∇⁴Φ - |∇Φ|²/2**
-
-Spatiotemporal chaos. Produces flame-front-like patterns that never stabilize.
-
-#### CSS with Memory
-```
-∂Φ/∂t = css(η=1, λ=0.2, μ=0.3, α=0.1, γ=0.9, τ=0.5)
-```
-
-Mathematical form:
-```
-∂Φ/∂t = η∇²Φ - λ|∇Φ|² + μΦ³ + α·δ_drift
-Ω^_{n+1} = γ·Ω^_n + (1-γ)·ρq·|Φ|
-δ_drift = ∇²Ω^ - Ω^
-```
-
-Full CSS with recursive memory field (Ω^). The system accumulates memory where shells form (high gradient regions) and uses that memory to modulate future evolution.
-
-| Parameter | Symbol | Description |
-|-----------|--------|-------------|
-| α | Feedback | Memory influence on evolution |
-| γ | Persistence | How long memory lasts (0-1) |
-| τ | Threshold | Gradient needed for shell detection |
-
----
-
-### CSS Examples
-
-#### 1. Spontaneous Domain Formation
-```
-Φ₀ = bistable(ε=0.3, seed=42)
-∂Φ/∂t = allen_cahn(ε=2)
-t ∈ [0, 10], Δt = 0.5
-canvas = 200×200
-colormap = diverging
-```
-
-Watch random noise spontaneously organize into domains of +1 (red) and -1 (blue).
-
-#### 2. Domain Wall Motion
-```
-Φ₀ = domains(n=6, dir=vertical)
-∂Φ/∂t = allen_cahn(ε=1.5)
-t ∈ [0, 15], Δt = 0.75
-canvas = 200×200
-colormap = diverging
-```
-
-Pre-initialized stripes coarsen as curved boundaries move to reduce total interface length.
-
-#### 3. Shrinking Disk
-```
-Φ₀ = disk(r=80)
-∂Φ/∂t = allen_cahn(ε=1)
-t ∈ [0, 20], Δt = 1
-canvas = 300×300
-colormap = plasma
-```
-
-A circular domain shrinks due to curvature-driven dynamics. Demonstrates motion by mean curvature.
-
-#### 4. Pattern Selection
-```
-Φ₀ = bistable(ε=0.05, seed=2024)
-∂Φ/∂t = swift_hohenberg(r=0.5)
-t ∈ [0, 30], Δt = 1.5
-canvas = 150×150
-colormap = neon
-```
-
-Watch a preferred wavelength emerge from noise, producing regular patterns.
-
-#### 5. Self-Referential CSS
-```
-Φ₀ = domains(n=4, noise=0.2)
-∂Φ/∂t = css(η=1, λ=0.2, μ=0.3, α=0.1, γ=0.9)
-t ∈ [0, 12], Δt = 0.6
-canvas = 200×200
-colormap = plasma
-```
-
-Full CSS with memory field. The system remembers where shells formed and uses that history to guide future evolution.
+**CFL Conditions:**
+- Diffusion: Δt < Δx² / (4D)
+- Advection: Δt < Δx / |c|
+- 4th-order: Δt < Δx⁴ / (16ν)
 
 ---
 
 ## Intent Tensor Theory Connection
 
-This engine implements the visual layer of ITT:
-
-| ITT Concept | Physics Analog |
-|-------------|----------------|
+| ITT Concept | Physics Implementation |
+|-------------|------------------------|
 | Φ (Potential) | Scalar field |
-| ∇Φ (Gradient) | Direction of change |
-| ∇²Φ (Laplacian) | Stability/collapse |
-| ∂Φ/∂t | Evolution equation |
+| ∇Φ (Tension) | Gradient direction |
+| ρq (Shell) | High \|∇Φ\| regions |
+| Ω^ (Memory) | Accumulated shell activity |
+| CLA^ (Logic) | Gate classification from shells |
+| Σ (Symbol) | Discrete output tokens |
+| δ_drift (Feedback) | Memory → evolution coupling |
 
-The **self-resolving** nature: given initial conditions, the future is mathematically determined. The system discovers what happens rather than being told.
+### The Self-Referential Property
+
+When α > 0 in CSS/sigma operators:
+1. Field evolves and forms shells
+2. Memory accumulates at shells
+3. Memory creates drift feedback
+4. Drift modifies future evolution
+5. **The system rewrites its own dynamics**
 
 ---
 
@@ -765,20 +412,28 @@ The **self-resolving** nature: given initial conditions, the future is mathemati
 
 ### Stack
 
-- **Pure JavaScript** - No dependencies
+- **Pure JavaScript** - Zero dependencies
 - **HTML5 Canvas** - Field rendering
 - **Float32Array** - Numerical precision
 - **LZW Compression** - GIF encoding
+- **Single HTML file** - ~3700 lines
 
-### Field Resolution
+### Components
 
-Default: 1 pixel = 1 grid point
-
-For performance with large canvases, the grid can be coarser than the pixel grid.
+| Component | Lines | Purpose |
+|-----------|-------|---------|
+| ScalarField | ~400 | Field math + CLA^ methods |
+| SymbolEmitter | ~300 | Σ = g(ρq, CLA^, Ω^) |
+| Evolution Operators | ~1200 | 18 physics engines |
+| Initial Conditions | ~300 | 10 field generators |
+| Colormaps | ~150 | 10 visualization maps |
+| GIF Encoder | ~400 | LZW compression |
+| Parser | ~200 | Mathematical notation |
+| UI | ~200 | Web interface |
 
 ### Boundary Conditions
 
-**Periodic:** Field wraps around edges. A wave exiting the right enters from the left.
+**Periodic:** Field wraps around edges.
 
 ---
 
@@ -786,9 +441,10 @@ For performance with large canvases, the grid can be coarser than the pixel grid
 
 - **Live App:** [https://render-executable-gif-physics.onrender.com](https://render-executable-gif-physics.onrender.com)
 - **GitHub:** [https://github.com/FunnelFunction/0.0_Executable_GIF_Physics](https://github.com/FunnelFunction/0.0_Executable_GIF_Physics)
-- **Dynamic GIF Command-Line:** [https://github.com/FunnelFunction/0.0_Dynamic_GIF_Command-Line](https://github.com/FunnelFunction/0.0_Dynamic_GIF_Command-Line)
 - **FunnelFunction:** [https://funnelfunction.com](https://funnelfunction.com)
 - **Intent Tensor Theory:** [https://intent-tensor-theory.com](https://intent-tensor-theory.com)
+- **ITT Coding Principals:** [https://github.com/intent-tensor-theory/0.0_Coding_Principals_Intent_Tensor_Theory](https://github.com/intent-tensor-theory/0.0_Coding_Principals_Intent_Tensor_Theory)
+- **Marketing Principals:** [https://github.com/FunnelFunction/0.0_git_funnelfunction_marketing_Principals](https://github.com/FunnelFunction/0.0_git_funnelfunction_marketing_Principals)
 
 ---
 
@@ -812,4 +468,4 @@ MIT License - Free for commercial and personal use.
 
 ---
 
-*The future unfurls from the present through mathematical necessity.*
+*The system speaks. Continuous dynamics emit discrete symbols. Σ = g(ρq, CLA^, Ω^).*
